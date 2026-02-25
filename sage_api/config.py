@@ -12,6 +12,7 @@ class Settings(BaseSettings):
         env_prefix="SAGE_API_",
         env_file=".env",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # Required fields
