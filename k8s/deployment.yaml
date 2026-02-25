@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sage-api
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sage-api
+  template:
+    metadata:
+      labels:
+        app: sage-api
+    spec:
+      containers:
+      - name: sage-api
+        image: sage-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        envFrom:
+        - configMapRef:
+            name: sage-api-config
+        env:
+        - name: SAGE_API_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: sage-api-secret
+              key: api-key
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sage-api-secret
+              key: redis-password
+              optional: true

@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sage-api-config
+  namespace: default
+data:
+  SAGE_API_REDIS_URL: "redis://redis-service:6379/0"
+  SAGE_API_AGENTS_DIR: "/app/agents"
+  SAGE_API_LOG_LEVEL: "INFO"
+  SAGE_API_HOST: "0.0.0.0"
+  SAGE_API_PORT: "8000"
+  SAGE_API_SESSION_TTL_SECONDS: "1800"
+  SAGE_API_REQUEST_TIMEOUT_SECONDS: "120"
