@@ -6,17 +6,23 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from sage_api.models.schemas import (
-    SendMessageRequest,
-    CreateSessionRequest,
-    AgentInfo,
-    SessionInfo,
-    MessageResponse,
-    SSEEvent,
-    ErrorResponse,
-    SessionData,
-)
+from sage.config import ContextConfig, ModelParams, Permission
 from sage.models import Message, ToolCall
+
+from sage_api.models.schemas import (
+    AgentDetail,
+    AgentInfo,
+    AgentSummary,
+    CreateSessionRequest,
+    ErrorResponse,
+    MessageResponse,
+    SendMessageRequest,
+    SessionData,
+    SessionInfo,
+    SkillInfo,
+    SSEEvent,
+    SubagentDetail,
+)
 
 
 class TestSendMessageRequest:
@@ -483,18 +489,6 @@ class TestSessionData:
         )
         assert session.conversation_history[0]["content"] is None
         assert session.conversation_history[0]["tool_calls"] is not None
-
-
-# --- New schema tests (Task 1) ---
-
-from sage.config import ContextConfig, ModelParams, Permission
-
-from sage_api.models.schemas import (
-    AgentDetail,
-    AgentSummary,
-    SkillInfo,
-    SubagentDetail,
-)
 
 
 class TestSkillInfo:
