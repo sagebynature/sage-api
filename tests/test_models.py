@@ -483,3 +483,142 @@ class TestSessionData:
         )
         assert session.conversation_history[0]["content"] is None
         assert session.conversation_history[0]["tool_calls"] is not None
+
+
+# --- New schema tests (Task 1) ---
+
+from sage.config import ContextConfig, ModelParams, Permission
+
+from sage_api.models.schemas import (
+    AgentDetail,
+    AgentSummary,
+    SkillInfo,
+    SubagentDetail,
+)
+
+
+class TestSkillInfo:
+    def test_minimal(self):
+        info = SkillInfo(name="clean-code")
+        assert info.name == "clean-code"
+        assert info.description is None
+
+    def test_with_description(self):
+        info = SkillInfo(name="clean-code", description="Code quality skill")
+        assert info.description == "Code quality skill"
+
+
+class TestSubagentDetail:
+    def test_full_fields(self):
+        detail = SubagentDetail(
+            name="explorer",
+            description="Explores code",
+            model="gpt-4o",
+            max_turns=10,
+            skills=["clean-code"],
+            model_params=ModelParams(temperature=0.0, max_tokens=4096),
+            permission=Permission(read="allow", edit="deny"),
+        )
+        assert detail.name == "explorer"
+        assert detail.model_params.temperature == 0.0
+        assert detail.permission.read == "allow"
+        assert detail.skills == ["clean-code"]
+
+    def test_null_permission(self):
+        detail = SubagentDetail(
+            name="helper",
+            model="gpt-4o-mini",
+            max_turns=5,
+            skills=[],
+            model_params=ModelParams(),
+            permission=None,
+        )
+        assert detail.permission is None
+
+
+class TestAgentSummary:
+    def test_full_fields(self):
+        summary = AgentSummary(
+            name="coder",
+            description="A coding agent",
+            model="claude-sonnet-4-6",
+            skills_count=3,
+            subagents_count=2,
+        )
+        assert summary.name == "coder"
+        assert summary.model == "claude-sonnet-4-6"
+        assert summary.skills_count == 3
+        assert summary.subagents_count == 2
+
+    def test_null_description(self):
+        summary = AgentSummary(
+            name="helper",
+            model="gpt-4o",
+            skills_count=0,
+            subagents_count=0,
+        )
+        assert summary.description is None
+
+
+class TestAgentDetail:
+    def test_full_fields(self):
+        detail = AgentDetail(
+            name="coder",
+            description="A coding agent",
+            model="claude-sonnet-4-6",
+            max_turns=25,
+            max_depth=3,
+            model_params=ModelParams(temperature=0.0, max_tokens=8192),
+            permission=Permission(read="allow", edit="allow"),
+            skills=[SkillInfo(name="clean-code", description="Code quality")],
+            subagents=[
+                SubagentDetail(
+                    name="explorer",
+                    description="Explores code",
+                    model="gpt-4o",
+                    max_turns=10,
+                    skills=[],
+                    model_params=ModelParams(),
+                    permission=Permission(read="allow"),
+                ),
+            ],
+            context=ContextConfig(compaction_threshold=0.75, reserve_tokens=4096),
+        )
+        assert detail.name == "coder"
+        assert len(detail.subagents) == 1
+        assert detail.subagents[0].name == "explorer"
+        assert len(detail.skills) == 1
+        assert detail.context.reserve_tokens == 4096
+
+    def test_minimal(self):
+        detail = AgentDetail(
+            name="simple",
+            model="gpt-4o-mini",
+            max_turns=10,
+            max_depth=3,
+            model_params=ModelParams(),
+            permission=None,
+            skills=[],
+            subagents=[],
+            context=None,
+        )
+        assert detail.permission is None
+        assert detail.context is None
+        assert detail.subagents == []
+
+    def test_json_round_trip(self):
+        detail = AgentDetail(
+            name="rt",
+            model="gpt-4o",
+            max_turns=10,
+            max_depth=3,
+            model_params=ModelParams(temperature=0.5),
+            permission=Permission(read="allow"),
+            skills=[SkillInfo(name="s1")],
+            subagents=[],
+            context=None,
+        )
+        json_str = detail.model_dump_json()
+        restored = AgentDetail.model_validate_json(json_str)
+        assert restored.name == "rt"
+        assert restored.model_params.temperature == 0.5

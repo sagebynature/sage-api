@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from sage.config import ContextConfig, ModelParams, Permission
 from sage.models import Message
 
 
@@ -27,14 +28,60 @@ class CreateSessionRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
-class AgentInfo(BaseModel):
-    """Information about an agent."""
+class SkillInfo(BaseModel):
+    """Metadata for a skill (excludes content)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     name: str
     description: str | None = None
-    capabilities: list[str]
+
+
+class SubagentDetail(BaseModel):
+    """Full detail for a subagent."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    description: str | None = None
+    model: str
+    max_turns: int
+    skills: list[str]
+    model_params: ModelParams
+    permission: Permission | None = None
+
+
+class AgentSummary(BaseModel):
+    """Summary information about an agent (for list endpoints)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    description: str | None = None
+    model: str
+    skills_count: int
+    subagents_count: int
+
+
+class AgentDetail(BaseModel):
+    """Comprehensive agent detail (for detail endpoints)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    name: str
+    description: str | None = None
+    model: str
+    max_turns: int
+    max_depth: int
+    model_params: ModelParams
+    permission: Permission | None = None
+    skills: list[SkillInfo]
+    subagents: list[SubagentDetail]
+    context: ContextConfig | None = None
+
+
+# Backward-compat alias — removed in Task 4 after all consumers migrate.
+AgentInfo = AgentSummary
 
 
 class SessionInfo(BaseModel):
