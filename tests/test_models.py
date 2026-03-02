@@ -11,7 +11,6 @@ from sage.models import Message, ToolCall
 
 from sage_api.models.schemas import (
     AgentDetail,
-    AgentInfo,
     AgentSummary,
     CreateSessionRequest,
     ErrorResponse,
@@ -75,41 +74,6 @@ class TestCreateSessionRequest:
         json_str = req.model_dump_json()
         req2 = CreateSessionRequest.model_validate_json(json_str)
         assert req2.metadata == {"key": "value"}
-
-
-class TestAgentInfo:
-    """Test AgentInfo model."""
-
-    def test_agent_info_basic(self):
-        """Test basic agent info."""
-        info = AgentInfo(
-            name="assistant",
-            description="A helpful assistant",
-            capabilities=["chat", "search"],
-        )
-        assert info.name == "assistant"
-        assert info.description == "A helpful assistant"
-        assert info.capabilities == ["chat", "search"]
-
-    def test_agent_info_no_description(self):
-        """Test agent info without description."""
-        info = AgentInfo(name="assistant", capabilities=[])
-        assert info.name == "assistant"
-        assert info.description is None
-        assert info.capabilities == []
-
-    def test_agent_info_json_serialization(self):
-        """Test JSON serialization."""
-        info = AgentInfo(
-            name="test-agent",
-            description="Test",
-            capabilities=["capability1"],
-        )
-        json_str = info.model_dump_json()
-        info2 = AgentInfo.model_validate_json(json_str)
-        assert info2.name == "test-agent"
-        assert info2.description == "Test"
-        assert info2.capabilities == ["capability1"]
 
 
 class TestSessionInfo:

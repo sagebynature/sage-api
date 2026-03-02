@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from sage_api.a2a.agent_card import build_agent_card, router
 from sage_api.config import get_settings
-from sage_api.models.schemas import AgentInfo
+from sage_api.models.schemas import AgentSummary
 from sage_api.services.agent_registry import AgentRegistry
 
 AGENT_CARD_URL = "/.well-known/agent-card.json"
@@ -67,8 +67,8 @@ class TestAgentCardEndpoint:
     def test_skills_reflect_registered_agents(self, client, mock_registry):
         """Each registered agent maps to one skill in the card."""
         mock_registry.list_agents.return_value = [
-            AgentInfo(name="alpha", description="Alpha agent", capabilities=[]),
-            AgentInfo(name="beta", description="Beta agent", capabilities=[]),
+            AgentSummary(name="alpha", description="Alpha agent", model="gpt-4o-mini", skills_count=0, subagents_count=0),
+            AgentSummary(name="beta", description="Beta agent", model="gpt-4o-mini", skills_count=0, subagents_count=0),
         ]
 
         response = client.get(AGENT_CARD_URL)
@@ -117,7 +117,7 @@ class TestAgentCardEndpoint:
     def test_skill_description_is_empty_string_when_agent_has_no_description(self, client, mock_registry):
         """Agent with no description maps to skill with empty string description."""
         mock_registry.list_agents.return_value = [
-            AgentInfo(name="nodesc", description=None, capabilities=[]),
+            AgentSummary(name="nodesc", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0),
         ]
 
         response = client.get(AGENT_CARD_URL)
@@ -132,7 +132,7 @@ class TestBuildAgentCard:
     def test_build_agent_card_returns_correct_structure(self):
         """build_agent_card returns a dict with all required A2A fields."""
         agents = [
-            AgentInfo(name="my-agent", description="Does stuff", capabilities=[]),
+            AgentSummary(name="my-agent", description="Does stuff", model="gpt-4o-mini", skills_count=0, subagents_count=0),
         ]
 
         card = build_agent_card(agents, "http://localhost:8000")
@@ -167,7 +167,7 @@ class TestBuildAgentCard:
 
     def test_build_agent_card_agent_with_none_description(self):
         """Agent with None description maps to empty string in skill."""
-        agents = [AgentInfo(name="x", description=None, capabilities=[])]
+        agents = [AgentSummary(name="x", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0)]
 
         card = build_agent_card(agents, "http://host")
 
@@ -176,8 +176,8 @@ class TestBuildAgentCard:
     def test_build_agent_card_multiple_agents_preserves_order(self):
         """Skills are generated in the same order as the input agents list."""
         agents = [
-            AgentInfo(name="z-agent", description=None, capabilities=[]),
-            AgentInfo(name="a-agent", description=None, capabilities=[]),
+            AgentSummary(name="z-agent", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0),
+            AgentSummary(name="a-agent", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0),
         ]
 
         card = build_agent_card(agents, "http://host")

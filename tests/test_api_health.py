@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sage_api.api.health import router
-from sage_api.models.schemas import AgentInfo
+from sage_api.models.schemas import AgentSummary
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ def _make_mock_redis(*, ping_raises: Exception | None = None) -> AsyncMock:
     return mock_redis
 
 
-def _make_mock_registry(agents: list[AgentInfo]) -> MagicMock:
+def _make_mock_registry(agents: list[AgentSummary]) -> MagicMock:
     """Build a mock AgentRegistry with a fixed ``list_agents`` return value."""
     mock_registry = MagicMock()
     mock_registry.list_agents.return_value = agents
@@ -44,7 +44,7 @@ def app_healthy() -> FastAPI:
     test_app = FastAPI()
     test_app.include_router(router)
     test_app.state.redis = _make_mock_redis()
-    test_app.state.registry = _make_mock_registry([AgentInfo(name="helper", description="A helper", capabilities=[])])
+    test_app.state.registry = _make_mock_registry([AgentSummary(name="helper", description="A helper", model="gpt-4o-mini", skills_count=0, subagents_count=0)])
     return test_app
 
 
@@ -64,7 +64,7 @@ def app_redis_down() -> FastAPI:
     test_app = FastAPI()
     test_app.include_router(router)
     test_app.state.redis = _make_mock_redis(ping_raises=ConnectionError("Redis connection refused"))
-    test_app.state.registry = _make_mock_registry([AgentInfo(name="helper", description="A helper", capabilities=[])])
+    test_app.state.registry = _make_mock_registry([AgentSummary(name="helper", description="A helper", model="gpt-4o-mini", skills_count=0, subagents_count=0)])
     return test_app
 
 
@@ -180,9 +180,9 @@ class TestReadiness:
     def test_readiness_agent_count_reflects_registry(self):
         """Agent count in response matches the number of registered agents."""
         agents = [
-            AgentInfo(name="a1", description=None, capabilities=[]),
-            AgentInfo(name="a2", description=None, capabilities=[]),
-            AgentInfo(name="a3", description=None, capabilities=[]),
+            AgentSummary(name="a1", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0),
+            AgentSummary(name="a2", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0),
+            AgentSummary(name="a3", description=None, model="gpt-4o-mini", skills_count=0, subagents_count=0),
         ]
         test_app = FastAPI()
         test_app.include_router(router)

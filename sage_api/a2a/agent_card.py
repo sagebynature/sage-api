@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from sage_api.models.schemas import AgentInfo
+from sage_api.models.schemas import AgentSummary
 from sage_api.services.agent_registry import AgentRegistry
 
 router = APIRouter(
@@ -18,11 +18,11 @@ AGENT_CARD_DESCRIPTION = "AI agent service powered by sage"
 AGENT_CARD_VERSION = "1.0.0"
 
 
-def build_agent_card(agents: list[AgentInfo], base_url: str) -> dict:
+def build_agent_card(agents: list[AgentSummary], base_url: str) -> dict:
     """Build an A2A-compliant AgentCard dict from a list of agents.
 
     Args:
-        agents: List of AgentInfo objects from the registry.
+        agents: List of AgentSummary objects from the registry.
         base_url: Base URL of the server (used to construct the A2A endpoint URL).
 
     Returns:

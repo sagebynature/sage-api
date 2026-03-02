@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 
 from sage_api.config import get_settings
 from sage_api.main import create_app
-from sage_api.models.schemas import AgentInfo
+from sage_api.models.schemas import AgentSummary
 
 
 AUTH_HEADERS = {"X-API-Key": "test-key"}
@@ -34,7 +34,7 @@ def _make_mock_redis(*, ping_ok: bool = True) -> AsyncMock:
     return mock
 
 
-def _make_mock_registry(agents: list[AgentInfo] | None = None) -> MagicMock:
+def _make_mock_registry(agents: list[AgentSummary] | None = None) -> MagicMock:
     """Return a mock AgentRegistry."""
     mock = MagicMock()
     mock.list_agents.return_value = agents or []
@@ -61,7 +61,7 @@ def _make_mock_hot_reloader() -> AsyncMock:
 
 @pytest.fixture()
 def mock_registry() -> MagicMock:
-    return _make_mock_registry(agents=[AgentInfo(name="test-agent", description="A test agent", capabilities=[])])
+    return _make_mock_registry(agents=[AgentSummary(name="test-agent", description="A test agent", model="gpt-4o-mini", skills_count=0, subagents_count=0)])
 
 
 @pytest.fixture()

@@ -80,16 +80,6 @@ class AgentDetail(BaseModel):
     context: ContextConfig | None = None
 
 
-class AgentInfo(BaseModel):
-    """Information about an agent (legacy — replaced by AgentSummary/AgentDetail)."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    name: str
-    description: str | None = None
-    capabilities: list[str]
-
-
 class SessionInfo(BaseModel):
     """Information about a session."""
 
