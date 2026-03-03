@@ -6,6 +6,7 @@ import uuid
 from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
+from redis.exceptions import LockNotOwnedError
 from sage import Agent
 from sage.models import Usage as SageUsage
 
@@ -26,7 +27,6 @@ class SessionManager:
         self._store = store
         self._request_timeout = request_timeout
         self._instances: dict[str, Agent] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
 
     async def create_session(self, agent_name: str, metadata: dict | None = None) -> SessionInfo:
         if self._registry.get_template(agent_name) is None:
@@ -37,7 +37,6 @@ class SessionManager:
             session_id, agent_name, metadata or {}, model_name=self._registry.get_template(agent_name).model or ""
         )
         self._instances[session_id] = self._registry.create_instance(agent_name)
-        self._locks[session_id] = asyncio.Lock()
         telemetry.record_session_created(agent_name)
         return self._to_session_info(session_id, session_data)
 
@@ -46,10 +45,9 @@ class SessionManager:
         if session_data is None:
             raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
-        lock = self._locks.setdefault(session_id, asyncio.Lock())
-        if lock.locked():
+        lock = self._store.session_lock(session_id, timeout=self._request_timeout + 30)
+        if not await lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="Concurrent request to same session")
-        await lock.acquire()
         try:
             latest_session_data = await self._store.get(session_id)
             if latest_session_data is None:
@@ -74,17 +72,19 @@ class SessionManager:
             )
             return MessageResponse(session_id=session_id, message=response)
         finally:
-            lock.release()
+            try:
+                await lock.release()
+            except LockNotOwnedError:
+                pass
 
     async def stream_message(self, session_id: str, message: str) -> AsyncGenerator[str, None]:
         session_data = await self._store.get(session_id)
         if session_data is None:
             raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
-        lock = self._locks.setdefault(session_id, asyncio.Lock())
-        if lock.locked():
+        lock = self._store.session_lock(session_id, timeout=self._request_timeout + 30)
+        if not await lock.acquire(blocking=False):
             raise HTTPException(status_code=409, detail="Concurrent request to same session")
-        await lock.acquire()
         try:
             latest_session_data = await self._store.get(session_id)
             if latest_session_data is None:
@@ -110,7 +110,10 @@ class SessionManager:
                 session_id, agent._conversation_history, usage=UsageInfo(**agent.cumulative_usage.model_dump())
             )
         finally:
-            lock.release()
+            try:
+                await lock.release()
+            except LockNotOwnedError:
+                pass
 
     async def get_session(self, session_id: str) -> SessionInfo | None:
         session_data = await self._store.get(session_id)
@@ -120,7 +123,6 @@ class SessionManager:
 
     async def delete_session(self, session_id: str) -> bool:
         instance = self._instances.pop(session_id, None)
-        self._locks.pop(session_id, None)
 
         if instance is not None:
             await instance.close()
@@ -138,7 +140,6 @@ class SessionManager:
             except Exception:
                 pass
         self._instances.clear()
-        self._locks.clear()
 
     def _get_or_recover_instance(self, session_id: str, session_data: SessionData) -> Agent:
         instance = self._instances.get(session_id)

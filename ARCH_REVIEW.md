@@ -4,13 +4,12 @@
 
 ### CRITICAL
 
-#### F-001 [Bugs & Race Conditions] No cross-replica session concurrency control
+#### ~~F-001 [Bugs & Race Conditions] No cross-replica session concurrency control~~ ✅ ADDRESSED
 
 - Severity: CRITICAL
-- Location: `sage_api/services/session_manager.py:27-29`, `sage_api/services/session_manager.py:46-49`, `sage_api/services/session_store.py:59-72`
-- Problem: Concurrency control is per-process (`asyncio.Lock` in `_locks`). In a multi-replica deployment, two pods can process the same `session_id` concurrently. Persistence is still read-modify-write (`GET` then `SET`), so writes can race.
-- Impact: Lost updates / corrupted conversation history; non-deterministic session state depending on which pod handled which request.
-- Recommendation: Add a distributed lock (Redis lock key with TTL + token-verified release) or optimistic concurrency (version + WATCH/MULTI or Lua). Make `save_history()` update atomic relative to the lock.
+- Location: `sage_api/services/session_manager.py`, `sage_api/services/session_store.py`
+- **Resolution**: Replaced per-process `asyncio.Lock` with distributed Redis lock (`redis.asyncio.lock.Lock`) via `session_store.session_lock()`. Lock uses token-verified release with TTL (`request_timeout + 30s`). `acquire(blocking=False)` provides fail-fast 409 semantics. `LockNotOwnedError` caught on release for safety-TTL edge cases. Applied to both `send_message()` and `stream_message()`.
+- **Branch**: `fix/f001-distributed-session-lock`
 
 #### F-002 [Security Concern] API key grants full agent capability (RCE if agents enable `shell`/tools)
 
@@ -48,13 +47,12 @@
 
 ### MEDIUM
 
-#### F-008 [Bugs & Race Conditions] Lock check is non-atomic (`locked()` then `acquire()`)
+#### ~~F-008 [Bugs & Race Conditions] Lock check is non-atomic (`locked()` then `acquire()`)~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
-- Location: `sage_api/services/session_manager.py:46-49`, `sage_api/services/session_manager.py:79-83`
-- Problem: Two tasks can both pass `locked()` before one acquires; the second then blocks instead of returning 409.
-- Impact: "Fail fast" concurrency semantics are unreliable; requests can queue and hit timeouts.
-- Recommendation: Use a non-blocking acquire pattern (e.g., `asyncio.wait_for(lock.acquire(), timeout=0)`), or maintain explicit per-session in-flight state.
+- Location: `sage_api/services/session_manager.py`
+- **Resolution**: Fixed as a side effect of F-001. The distributed Redis lock uses `acquire(blocking=False)` which is atomic — returns `True` (acquired) or `False` (already held) in a single operation. Eliminates the `locked()` then `acquire()` race condition entirely.
+- **Branch**: `fix/f001-distributed-session-lock`
 
 #### F-009 [Data Integrity] Redis `update()` uses `SET` then `EXPIRE` as separate commands
 

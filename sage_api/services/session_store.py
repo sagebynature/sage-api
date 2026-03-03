@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import redis.asyncio as aioredis
+from redis.asyncio.lock import Lock as RedisLock
 
 from sage.models import Message
 from sage_api.models.schemas import SessionData, UsageInfo
@@ -89,6 +90,12 @@ class RedisSessionStore:
         if session_data is None:
             return []
         return [Message.model_validate(item) for item in session_data.conversation_history]
+
+    def session_lock(self, session_id: str, timeout: float = 150) -> RedisLock:
+        return self._redis.lock(
+            name=f"lock:{self._key(session_id)}",
+            timeout=timeout,
+        )
 
     async def close(self) -> None:
         await self._redis.aclose()
