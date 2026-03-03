@@ -7,9 +7,10 @@ from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
 from sage import Agent
+from sage.models import Usage as SageUsage
 
 from sage_api import telemetry
-from sage_api.models.schemas import MessageResponse, SessionData, SessionInfo
+from sage_api.models.schemas import MessageResponse, SessionData, SessionInfo, UsageInfo
 from sage_api.services.agent_registry import AgentRegistry
 from sage_api.services.session_store import RedisSessionStore
 
@@ -32,11 +33,13 @@ class SessionManager:
             raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
 
         session_id = str(uuid.uuid4())
-        session_data = await self._store.create(session_id, agent_name, metadata or {})
+        session_data = await self._store.create(
+            session_id, agent_name, metadata or {}, model_name=self._registry.get_template(agent_name).model or ""
+        )
         self._instances[session_id] = self._registry.create_instance(agent_name)
         self._locks[session_id] = asyncio.Lock()
         telemetry.record_session_created(agent_name)
-        return self._to_session_info(session_data)
+        return self._to_session_info(session_id, session_data)
 
     async def send_message(self, session_id: str, message: str) -> MessageResponse:
         session_data = await self._store.get(session_id)
@@ -66,7 +69,9 @@ class SessionManager:
             finally:
                 telemetry.record_message(latest_session_data.agent_name, "sync", time.monotonic() - _t0)
 
-            await self._store.save_history(session_id, agent._conversation_history)
+            await self._store.save_history(
+                session_id, agent._conversation_history, usage=UsageInfo(**agent.cumulative_usage.model_dump())
+            )
             return MessageResponse(session_id=session_id, message=response)
         finally:
             lock.release()
@@ -101,7 +106,9 @@ class SessionManager:
             finally:
                 telemetry.record_message(latest_session_data.agent_name, "stream", time.monotonic() - _t0)
 
-            await self._store.save_history(session_id, agent._conversation_history)
+            await self._store.save_history(
+                session_id, agent._conversation_history, usage=UsageInfo(**agent.cumulative_usage.model_dump())
+            )
         finally:
             lock.release()
 
@@ -109,7 +116,7 @@ class SessionManager:
         session_data = await self._store.get(session_id)
         if session_data is None:
             return None
-        return self._to_session_info(session_data)
+        return self._to_session_info(session_id, session_data)
 
     async def delete_session(self, session_id: str) -> bool:
         instance = self._instances.pop(session_id, None)
@@ -140,15 +147,24 @@ class SessionManager:
 
         recovered = self._registry.create_instance(session_data.agent_name)
         recovered._conversation_history = session_data.to_messages()
+        recovered._cumulative_usage = SageUsage(**session_data.cumulative_usage.model_dump())
         self._instances[session_id] = recovered
         return recovered
 
-    @staticmethod
-    def _to_session_info(session_data: SessionData) -> SessionInfo:
+    def _to_session_info(self, session_id: str, session_data: SessionData) -> SessionInfo:
+        duration = (session_data.last_active_at - session_data.created_at).total_seconds()
+        ctx_util = None
+        if session_id in self._instances:
+            stats = self._instances[session_id].get_usage_stats()
+            ctx_util = stats.get("usage_percentage")
         return SessionInfo(
             session_id=session_data.session_id,
             agent_name=session_data.agent_name,
             created_at=session_data.created_at,
             last_active_at=session_data.last_active_at,
             message_count=len(session_data.conversation_history),
+            duration_seconds=duration,
+            usage=session_data.cumulative_usage,
+            model=session_data.model_name or None,
+            context_window_utilization=ctx_util,
         )
