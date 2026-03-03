@@ -16,6 +16,7 @@ class SendMessageRequest(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+    session_id: str
     message: str
     metadata: dict[str, Any] | None = None
 
@@ -80,6 +81,20 @@ class AgentDetail(BaseModel):
     context: ContextConfig | None = None
 
 
+class UsageInfo(BaseModel):
+    """Cumulative token usage for a session."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+    reasoning_tokens: int = 0
+    cost: float = 0.0
+
+
 class SessionInfo(BaseModel):
     """Information about a session."""
 
@@ -90,6 +105,10 @@ class SessionInfo(BaseModel):
     created_at: datetime
     last_active_at: datetime
     message_count: int
+    duration_seconds: float = 0.0
+    usage: UsageInfo = UsageInfo()
+    model: str | None = None
+    context_window_utilization: float | None = None
 
 
 class MessageResponse(BaseModel):
@@ -132,6 +151,8 @@ class SessionData(BaseModel):
     created_at: datetime
     last_active_at: datetime
     metadata: dict[str, Any]
+    cumulative_usage: UsageInfo = UsageInfo()
+    model_name: str = ""
 
     @classmethod
     def from_messages(
