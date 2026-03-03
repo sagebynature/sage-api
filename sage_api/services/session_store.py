@@ -19,8 +19,6 @@ class RedisSessionStore:
                 raise ValueError("Either redis_url or redis_client must be provided")
             self._redis = aioredis.from_url(redis_url, decode_responses=True)
         self._session_ttl = session_ttl
-        self._redis = aioredis.from_url(redis_url, decode_responses=True)
-        self._session_ttl = session_ttl
 
     def _key(self, session_id: str) -> str:
         return f"session:{session_id}"

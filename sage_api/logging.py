@@ -1,22 +1,33 @@
 """Structured logging configuration using structlog."""
 
 import logging
-import sys
+import logging.config
+from pathlib import Path
 from typing import Any
 
 import structlog
 
+_LOGGING_CONF = Path(__file__).resolve().parent.parent / "logging.conf"
+
 
 def setup_logging(log_level: str = "INFO") -> None:
-    """Configure structlog with JSON output for production, console for dev.
+    """Configure logging from logging.conf, then layer structlog on top.
 
     Args:
         log_level: Logging level as a string (e.g., "DEBUG", "INFO", "WARNING", "ERROR").
                   Defaults to "INFO". Invalid levels default to INFO.
     """
-    # Set stdlib logging level
     level = getattr(logging, log_level.upper(), logging.INFO)
-    logging.basicConfig(level=level, stream=sys.stdout)
+
+    if _LOGGING_CONF.exists():
+        try:
+            logging.config.fileConfig(str(_LOGGING_CONF), disable_existing_loggers=False)
+        except Exception:
+            logging.basicConfig(level=level)
+    else:
+        logging.basicConfig(level=level)
+
+    logging.getLogger().setLevel(level)
 
     structlog.configure(
         processors=[

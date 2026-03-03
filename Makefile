@@ -1,23 +1,23 @@
 #!/usr/bin/make -f
 
-.PHONY: check-env sync install update lint format type-check test clean
+.PHONY: check-env sync install update lint format type-check test clean start
 
 PACKAGE_NAME = sage_api
 SRC_DIR = $(PACKAGE_NAME)
-UV_AUTH_ENV = UV_INDEX_URL=https://user:${AZURE_ARTIFACTS_ENV_ACCESS_TOKEN}@pkgs.dev.azure.com/ApolloAzureDevOps/_packaging/ApolloAzureDevOps/pypi/simple/
 
 check-env:
 	@which python >/dev/null 2>&1 || (echo "Python 3 is required. Please install it first." && exit 1)
 	@which uv >/dev/null 2>&1 || (echo "uv is required. Please install it first." && exit 1)
 
 sync: check-env
-	${UV_AUTH_ENV} uv sync --group dev
+	uv sync --frozen --group dev
 
-install: check-env
-	${UV_AUTH_ENV} uv sync --frozen --group dev
+install: sync
+	uv run pre-commit install
+	uv run pre-commit install --hook-type commit-msg
 
 update: check-env
-	${UV_AUTH_ENV} uv sync --group dev
+	uv sync --group dev
 
 lint:
 	uv run ruff check $(SRC_DIR) tests --fix
@@ -33,6 +33,9 @@ test: install
 
 test-only:
 	uv run pytest tests/ -v
+
+start:
+	uv run uvicorn sage_api.main:app --host 0.0.0.0 --port 8000 --reload
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache

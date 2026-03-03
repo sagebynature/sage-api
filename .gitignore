@@ -14,12 +14,10 @@ venv/
 ENV/
 env/
 
-# uv lockfile
-uv.lock
-
 # Testing
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/
@@ -45,3 +43,4 @@ Thumbs.db
 # Build artifacts
 *.whl
 *.tar.gz
+*.db

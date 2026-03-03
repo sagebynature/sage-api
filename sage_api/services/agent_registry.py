@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from sage import Agent
@@ -63,8 +64,19 @@ class AgentRegistry:
             logger.warning("Skipping %s — no primary agent defined in config.toml", instance_dir)
             return None
 
-        # Resolve skills
-        skills_dir = resolve_skills_dir(central.skills_dir if central else None)
+        # Resolve skills — if skills_dir is configured, resolve it relative to
+        # instance_dir rather than CWD.  Only fall back to the waterfall lookup
+        # when skills_dir is not set at all.
+        raw_skills_dir = central.skills_dir if central else None
+        if raw_skills_dir is not None:
+            p = Path(os.path.expandvars(raw_skills_dir)).expanduser()
+            if not p.is_absolute():
+                p = instance_dir / p
+            skills_dir: Path | None = p if p.is_dir() else None
+            if skills_dir is None:
+                logger.warning("Skills directory '%s' not found in %s", raw_skills_dir, instance_dir)
+        else:
+            skills_dir = resolve_skills_dir(None)
         global_skills = load_skills_from_directory(skills_dir) if skills_dir else []
 
         # Load the primary agent config (with central merge)
@@ -125,10 +137,7 @@ class AgentRegistry:
 
         config = inst.config
 
-        skills = [
-            SkillInfo(name=s.name, description=s.description or None)
-            for s in inst.global_skills
-        ]
+        skills = [SkillInfo(name=s.name, description=s.description or None) for s in inst.global_skills]
 
         subagents = [
             SubagentDetail(
