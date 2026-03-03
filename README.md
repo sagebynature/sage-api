@@ -155,10 +155,10 @@ The service discovers this on startup (or hot-reload) and exposes it as `my-agen
 | GET | `/v1/agents` | Yes | List agents |
 | GET | `/v1/agents/{name}` | Yes | Get agent details |
 | POST | `/v1/agents/{name}/sessions` | Yes | Create session |
-| GET | `/v1/agents/{name}/sessions/{id}` | Yes | Get session info |
-| DELETE | `/v1/agents/{name}/sessions/{id}` | Yes | Delete session |
-| POST | `/v1/agents/{name}/sessions/{id}/messages` | Yes | Send message (sync) |
-| POST | `/v1/agents/{name}/sessions/{id}/messages/stream` | Yes | Send message (SSE) |
+| GET | `/v1/agents/{name}/sessions?session_id={id}` | Yes | Get session info |
+| DELETE | `/v1/agents/{name}/sessions?session_id={id}` | Yes | Delete session |
+| POST | `/v1/agents/{name}/messages` | Yes | Send message (sync) |
+| POST | `/v1/agents/{name}/messages/stream` | Yes | Send message (SSE) |
 | GET | `/health/live` | No | Liveness probe |
 | GET | `/health/ready` | No | Readiness probe |
 | GET | `/.well-known/agent-card.json` | No | A2A agent card |
@@ -226,14 +226,36 @@ curl -s -X POST \
 
 ```bash
 curl -s -H "X-API-Key: $API_KEY" \
-  http://localhost:8000/v1/agents/coder/sessions/$SESSION_ID
+  "http://localhost:8000/v1/agents/coder/sessions?session_id=$SESSION_ID"
+```
+
+```json
+{
+  "session_id": "ee1c713a-bc7d-4236-9069-4629762f7e6c",
+  "agent_name": "coder",
+  "created_at": "2026-03-02T05:41:28.009564Z",
+  "last_active_at": "2026-03-02T05:45:12.123456Z",
+  "message_count": 3,
+  "duration_seconds": 224.11,
+  "usage": {
+    "prompt_tokens": 1842,
+    "completion_tokens": 391,
+    "total_tokens": 2233,
+    "cache_read_tokens": 0,
+    "cache_creation_tokens": 0,
+    "reasoning_tokens": 0,
+    "cost": 0.006
+  },
+  "model": "azure_ai/claude-sonnet-4-6",
+  "context_window_utilization": 0.011
+}
 ```
 
 **Delete a session:**
 
 ```bash
 curl -s -X DELETE -H "X-API-Key: $API_KEY" \
-  http://localhost:8000/v1/agents/coder/sessions/$SESSION_ID
+  "http://localhost:8000/v1/agents/coder/sessions?session_id=$SESSION_ID"
 # Returns 204 No Content
 ```
 
@@ -247,8 +269,8 @@ Blocks until the agent produces a complete response.
 curl -s -X POST \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"message": "What is 2 + 2?"}' \
-  http://localhost:8000/v1/agents/coder/sessions/$SESSION_ID/messages
+  -d '{"session_id": "'$SESSION_ID'", "message": "What is 2 + 2?"}' \
+  http://localhost:8000/v1/agents/coder/messages
 ```
 
 ```json
@@ -267,8 +289,8 @@ Returns a Server-Sent Events stream. Tokens arrive as they are generated.
 curl -N -X POST \
   -H "X-API-Key: $API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"message": "Say hello in 3 words."}' \
-  http://localhost:8000/v1/agents/coder/sessions/$SESSION_ID/messages/stream
+  -d '{"session_id": "'$SESSION_ID'", "message": "Say hello in 3 words."}' \
+  http://localhost:8000/v1/agents/coder/messages/stream
 ```
 
 ```
