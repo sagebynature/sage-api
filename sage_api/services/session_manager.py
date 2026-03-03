@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 from collections.abc import AsyncGenerator
 
 from fastapi import HTTPException
 from sage import Agent
 
+from sage_api import telemetry
 from sage_api.models.schemas import MessageResponse, SessionData, SessionInfo
 from sage_api.services.agent_registry import AgentRegistry
 from sage_api.services.session_store import RedisSessionStore
@@ -33,6 +35,7 @@ class SessionManager:
         session_data = await self._store.create(session_id, agent_name, metadata or {})
         self._instances[session_id] = self._registry.create_instance(agent_name)
         self._locks[session_id] = asyncio.Lock()
+        telemetry.record_session_created(agent_name)
         return self._to_session_info(session_data)
 
     async def send_message(self, session_id: str, message: str) -> MessageResponse:
@@ -52,10 +55,13 @@ class SessionManager:
             agent = self._get_or_recover_instance(session_id, latest_session_data)
             agent._conversation_history = latest_session_data.to_messages()
 
+            _t0 = time.monotonic()
             try:
                 response = await asyncio.wait_for(agent.run(message), timeout=self._request_timeout)
             except asyncio.TimeoutError as exc:
                 raise HTTPException(status_code=504, detail="Request timed out") from exc
+            finally:
+                telemetry.record_message(latest_session_data.agent_name, "sync", time.monotonic() - _t0)
 
             await self._store.save_history(session_id, agent._conversation_history)
             return MessageResponse(session_id=session_id, message=response)
@@ -79,12 +85,15 @@ class SessionManager:
             agent = self._get_or_recover_instance(session_id, latest_session_data)
             agent._conversation_history = latest_session_data.to_messages()
 
+            _t0 = time.monotonic()
             try:
                 async with asyncio.timeout(self._request_timeout):
                     async for chunk in agent.stream(message):
                         yield chunk
             except TimeoutError as exc:
                 raise HTTPException(status_code=504, detail="Request timed out") from exc
+            finally:
+                telemetry.record_message(latest_session_data.agent_name, "stream", time.monotonic() - _t0)
 
             await self._store.save_history(session_id, agent._conversation_history)
         finally:
@@ -103,7 +112,11 @@ class SessionManager:
         if instance is not None:
             await instance.close()
 
-        return await self._store.delete(session_id)
+        deleted = await self._store.delete(session_id)
+        if deleted:
+            telemetry.record_session_deleted()
+        return deleted
+
     async def close_all(self) -> None:
         """Close all active agent instances during shutdown."""
         for session_id, agent in list(self._instances.items()):
