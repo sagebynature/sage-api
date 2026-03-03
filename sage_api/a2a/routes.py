@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
+from sage_api.exceptions import DomainException, ServiceUnavailableError
 from sage_api.logging import get_logger
 from sage_api.middleware.auth import verify_api_key
 from sage_api.services.session_manager import SessionManager
@@ -73,7 +74,7 @@ async def _resolve_session_id(
     registry = request.app.state.registry
     agents = registry.list_agents()
     if not agents:
-        raise HTTPException(status_code=503, detail="No agents registered")
+        raise ServiceUnavailableError("No agents registered")
     agent_name = agents[0].name
     session_info = await session_manager.create_session(agent_name=agent_name)
     return session_info.session_id
@@ -95,7 +96,7 @@ async def _stream_events(stream, first_chunk: str | None, request_id: str | int,
                 "event": "message",
                 "data": json.dumps({"kind": "artifact-update", "artifact": {"parts": [{"text": chunk}]}}),
             }
-    except HTTPException as exc:
+    except (HTTPException, DomainException) as exc:
         yield {
             "event": "error",
             "data": json.dumps(
@@ -125,7 +126,7 @@ async def handle_a2a_request(
         params = MessageParams.model_validate(body.params)
         text_input = _extract_text_input(params.message)
         session_id = await _resolve_session_id(request, session_manager, params.sessionId)
-    except HTTPException as exc:
+    except (HTTPException, DomainException) as exc:
         return _jsonrpc_error(body.id, exc.status_code, str(exc.detail))
     except ValidationError:
         return _jsonrpc_error(body.id, -32602, "Invalid params")
@@ -136,7 +137,7 @@ async def handle_a2a_request(
     if body.method == "message/send":
         try:
             response = await session_manager.send_message(session_id, text_input)
-        except HTTPException as exc:
+        except (HTTPException, DomainException) as exc:
             return _jsonrpc_error(body.id, exc.status_code, str(exc.detail))
 
         return JSONResponse(
@@ -156,7 +157,7 @@ async def handle_a2a_request(
         first_chunk = await anext(stream)
     except StopAsyncIteration:
         first_chunk = None
-    except HTTPException as exc:
+    except (HTTPException, DomainException) as exc:
         return _jsonrpc_error(body.id, exc.status_code, str(exc.detail))
 
     return EventSourceResponse(_stream_events(stream, first_chunk, body.id, session_id))

@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import HTTPException
 
+from sage_api.exceptions import ConflictError, NotFoundError, RequestTimeoutError
 from sage_api.models.schemas import SessionData, UsageInfo
 from sage_api.services.agent_registry import AgentRegistry
 from sage_api.services.session_manager import SessionManager
@@ -99,10 +99,8 @@ async def test_create_session_unknown_agent_raises_404() -> None:
     manager, registry, _store, _agent = build_manager()
     registry.get_template.return_value = None
 
-    with pytest.raises(HTTPException, match="not found") as exc:
+    with pytest.raises(NotFoundError, match="not found"):
         await manager.create_session("missing")
-
-    assert exc.value.status_code == 404
 
 
 async def test_send_message_happy_path() -> None:
@@ -126,10 +124,8 @@ async def test_send_message_session_not_found_raises_404() -> None:
     manager, _registry, store, _agent = build_manager()
     store.get = AsyncMock(return_value=None)
 
-    with pytest.raises(HTTPException, match="not found") as exc:
+    with pytest.raises(NotFoundError, match="not found"):
         await manager.send_message("missing", "hello")
-
-    assert exc.value.status_code == 404
 
 
 async def test_send_message_concurrent_raises_409() -> None:
@@ -138,10 +134,8 @@ async def test_send_message_concurrent_raises_409() -> None:
     store.get = AsyncMock(return_value=session_data)
     store.session_lock = MagicMock(return_value=_make_lock_mock(acquired=False))
 
-    with pytest.raises(HTTPException, match="Concurrent request") as exc:
+    with pytest.raises(ConflictError, match="Concurrent request"):
         await manager.send_message("session-1", "hello")
-
-    assert exc.value.status_code == 409
 
 
 async def test_session_recovery() -> None:
@@ -195,10 +189,8 @@ async def test_send_message_timeout_raises_504() -> None:
     store.get = AsyncMock(side_effect=[session_data, session_data])
     agent.run = AsyncMock(side_effect=asyncio.TimeoutError)
 
-    with pytest.raises(HTTPException, match="timed out") as exc:
+    with pytest.raises(RequestTimeoutError, match="timed out"):
         await manager.send_message("session-1", "hello")
-
-    assert exc.value.status_code == 504
 
 
 async def test_stream_message_happy_path_saves_history() -> None:
@@ -270,3 +262,38 @@ async def test_get_session_returns_enriched_info() -> None:
     assert info.duration_seconds == 300.0
     assert info.usage.prompt_tokens == 100
     assert info.model == "azure_ai/claude-sonnet-4-6"
+
+
+async def test_delete_session_deletes_redis_before_closing_agent() -> None:
+    manager, _registry, store, agent = build_manager()
+    store.delete = AsyncMock(return_value=True)
+    manager._instances["session-1"] = agent
+
+    call_order: list[str] = []
+    original_delete = store.delete
+
+    async def tracked_delete(sid: str) -> bool:
+        call_order.append("redis_delete")
+        return await original_delete(sid)
+
+    async def tracked_close() -> None:
+        call_order.append("agent_close")
+
+    store.delete = AsyncMock(side_effect=tracked_delete)
+    agent.close = AsyncMock(side_effect=tracked_close)
+
+    await manager.delete_session("session-1")
+
+    assert call_order == ["redis_delete", "agent_close"]
+
+
+async def test_delete_session_succeeds_when_agent_close_fails() -> None:
+    manager, _registry, store, agent = build_manager()
+    store.delete = AsyncMock(return_value=True)
+    agent.close = AsyncMock(side_effect=RuntimeError("close exploded"))
+    manager._instances["session-1"] = agent
+
+    deleted = await manager.delete_session("session-1")
+
+    assert deleted is True
+    assert "session-1" not in manager._instances

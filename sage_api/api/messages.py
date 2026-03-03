@@ -36,7 +36,7 @@ async def send_message(
         raise HTTPException(status_code=404, detail="Session not found")
     if session.agent_name != name:
         raise HTTPException(status_code=404, detail="Session not found")
-    # HTTPException (409, 504) from session_manager bubbles up as-is
+    # DomainException (409, 504) from session_manager bubbles up to middleware
     return await session_manager.send_message(
         session_id=body.session_id,
         message=body.message,

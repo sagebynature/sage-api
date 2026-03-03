@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from sage_api.exceptions import DomainException
 from sage_api.logging import get_logger
 
 logger = get_logger(__name__)
@@ -93,17 +94,20 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
+async def domain_exception_handler(request: Request, exc: DomainException) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.error,
+            "detail": exc.detail,
+            "status_code": exc.status_code,
+        },
+    )
+
+
 def add_exception_handlers(app: FastAPI) -> None:
-    """Register all exception handlers on the given FastAPI application.
-
-    Registers handlers for:
-    - :class:`fastapi.HTTPException` → structured JSON error responses
-    - :class:`fastapi.exceptions.RequestValidationError` → 422 with field errors
-    - :class:`Exception` → generic 500 for all unhandled exceptions
-
-    Args:
-        app: The FastAPI application instance to configure.
-    """
+    """Register all exception handlers on the given FastAPI application."""
     app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(DomainException, domain_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(Exception, unhandled_exception_handler)

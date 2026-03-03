@@ -5,15 +5,18 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 
-from fastapi import HTTPException
 from redis.exceptions import LockNotOwnedError
 from sage import Agent
 from sage.models import Usage as SageUsage
 
 from sage_api import telemetry
+from sage_api.exceptions import ConflictError, NotFoundError, RequestTimeoutError
+from sage_api.logging import get_logger
 from sage_api.models.schemas import MessageResponse, SessionData, SessionInfo, UsageInfo
 from sage_api.services.agent_registry import AgentRegistry
 from sage_api.services.session_store import RedisSessionStore
+
+logger = get_logger(__name__)
 
 
 class SessionManager:
@@ -30,7 +33,7 @@ class SessionManager:
 
     async def create_session(self, agent_name: str, metadata: dict | None = None) -> SessionInfo:
         if self._registry.get_template(agent_name) is None:
-            raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found")
+            raise NotFoundError(f"Agent '{agent_name}' not found")
 
         session_id = str(uuid.uuid4())
         session_data = await self._store.create(
@@ -43,15 +46,15 @@ class SessionManager:
     async def send_message(self, session_id: str, message: str) -> MessageResponse:
         session_data = await self._store.get(session_id)
         if session_data is None:
-            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+            raise NotFoundError(f"Session '{session_id}' not found")
 
         lock = self._store.session_lock(session_id, timeout=self._request_timeout + 30)
         if not await lock.acquire(blocking=False):
-            raise HTTPException(status_code=409, detail="Concurrent request to same session")
+            raise ConflictError("Concurrent request to same session")
         try:
             latest_session_data = await self._store.get(session_id)
             if latest_session_data is None:
-                raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+                raise NotFoundError(f"Session '{session_id}' not found")
 
             agent = self._get_or_recover_instance(session_id, latest_session_data)
             agent._conversation_history = latest_session_data.to_messages()
@@ -63,7 +66,7 @@ class SessionManager:
             try:
                 response = await asyncio.wait_for(agent.run(message), timeout=self._request_timeout)
             except asyncio.TimeoutError as exc:
-                raise HTTPException(status_code=504, detail="Request timed out") from exc
+                raise RequestTimeoutError("Request timed out") from exc
             finally:
                 telemetry.record_message(latest_session_data.agent_name, "sync", time.monotonic() - _t0)
 
@@ -80,15 +83,15 @@ class SessionManager:
     async def stream_message(self, session_id: str, message: str) -> AsyncGenerator[str, None]:
         session_data = await self._store.get(session_id)
         if session_data is None:
-            raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+            raise NotFoundError(f"Session '{session_id}' not found")
 
         lock = self._store.session_lock(session_id, timeout=self._request_timeout + 30)
         if not await lock.acquire(blocking=False):
-            raise HTTPException(status_code=409, detail="Concurrent request to same session")
+            raise ConflictError("Concurrent request to same session")
         try:
             latest_session_data = await self._store.get(session_id)
             if latest_session_data is None:
-                raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+                raise NotFoundError(f"Session '{session_id}' not found")
 
             agent = self._get_or_recover_instance(session_id, latest_session_data)
             agent._conversation_history = latest_session_data.to_messages()
@@ -102,7 +105,7 @@ class SessionManager:
                     async for chunk in agent.stream(message):
                         yield chunk
             except TimeoutError as exc:
-                raise HTTPException(status_code=504, detail="Request timed out") from exc
+                raise RequestTimeoutError("Request timed out") from exc
             finally:
                 telemetry.record_message(latest_session_data.agent_name, "stream", time.monotonic() - _t0)
 
@@ -123,11 +126,12 @@ class SessionManager:
 
     async def delete_session(self, session_id: str) -> bool:
         instance = self._instances.pop(session_id, None)
-
-        if instance is not None:
-            await instance.close()
-
         deleted = await self._store.delete(session_id)
+        if instance is not None:
+            try:
+                await instance.close()
+            except Exception:
+                logger.warning("session_close_failed", session_id=session_id)
         if deleted:
             telemetry.record_session_deleted()
         return deleted

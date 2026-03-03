@@ -30,21 +30,25 @@
 - Recommendation: If `exc.detail` already matches `{error, detail, status_code}`, return it as-is. Otherwise, map dicts to both fields.
 - Resolution: Changed `detail_text = None` to `detail_text = exc.detail.get("detail")` in `errors.py:32`. All dict-shaped callers already use `ErrorResponse` shape with a `"detail"` key, so the value is now preserved. Added 3 regression tests covering dict-with-detail, dict-without-detail, and 401 auth dict cases.
 
-#### F-005 [Bugs] `delete_session()` can fail to delete if `agent.close()` raises
+#### ~~F-005 [Bugs] `delete_session()` can fail to delete if `agent.close()` raises~~ ✅ ADDRESSED
 
 - Severity: HIGH
 - Location: `sage_api/services/session_manager.py:114-124`
 - Problem: Agent close happens before Redis delete; exceptions abort deletion.
 - Impact: Sessions become undeletable in edge cases; leaks Redis keys and in-memory bookkeeping.
 - Recommendation: Delete from Redis first, then best-effort close the agent (catch exceptions and continue).
+- **Resolution**: Reordered `delete_session()` to call `self._store.delete(session_id)` first, then best-effort `agent.close()` in a try/except that logs a warning on failure. Added 2 tests: one verifying Redis-first ordering via `call_args_list`, one verifying success when `agent.close()` raises.
+- **Branch**: `fix/f005-f006-domain-exceptions`
 
-#### F-006 [Architecture Issue] Service layer depends on FastAPI (`HTTPException`)
+#### ~~F-006 [Architecture Issue] Service layer depends on FastAPI (`HTTPException`)~~ ✅ ADDRESSED
 
 - Severity: HIGH
 - Location: `sage_api/services/session_manager.py:8`, `sage_api/services/session_manager.py:30-107`, `sage_api/a2a/routes.py:124-134`
 - Problem: Business/service code raises HTTP transport exceptions directly.
 - Impact: Cross-protocol behavior (REST vs JSON-RPC) is coupled to HTTP semantics; harder to test and reuse.
 - Recommendation: Raise domain exceptions (NotFound/Conflict/Timeout) in services and translate at the API edges.
+- **Resolution**: Created `sage_api/exceptions.py` with `DomainException` base class and `NotFoundError` (404), `ConflictError` (409), `RequestTimeoutError` (504), `ServiceUnavailableError` (503) subclasses. Replaced all 9 `HTTPException` raises in `session_manager.py` and 1 in `a2a/routes.py` with domain exceptions. Added `domain_exception_handler` in `middleware/errors.py` registered between HTTPException and generic Exception handlers. Updated A2A routes to catch `(HTTPException, DomainException)`. Added 6 middleware tests and updated all session_manager tests.
+- **Branch**: `fix/f005-f006-domain-exceptions`
 
 ### MEDIUM
 

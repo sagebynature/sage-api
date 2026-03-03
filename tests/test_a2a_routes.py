@@ -4,11 +4,12 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from sage_api.a2a.routes import router
+from sage_api.exceptions import NotFoundError
 from sage_api.models.schemas import MessageResponse, SessionInfo
 from sage_api.services.session_manager import SessionManager
 
@@ -166,7 +167,7 @@ def test_missing_api_key_returns_401(client):
 
 
 def test_message_send_session_not_found_maps_to_jsonrpc_error(client, mock_manager):
-    mock_manager.send_message = AsyncMock(side_effect=HTTPException(status_code=404, detail="Session missing"))
+    mock_manager.send_message = AsyncMock(side_effect=NotFoundError("Session missing"))
     body = make_jsonrpc_request(
         "message/send",
         make_message_params([{"kind": "text", "text": "hello"}], session_id="missing"),

@@ -4,6 +4,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+from sage_api.exceptions import DomainException, NotFoundError, RequestTimeoutError
 from sage_api.middleware.errors import add_exception_handlers
 
 
@@ -48,6 +49,18 @@ def make_app() -> tuple[FastAPI, TestClient]:
     @app.get("/raise-500")
     async def raise_unhandled():
         raise RuntimeError("boom")
+
+    @app.get("/raise-domain-404")
+    async def raise_domain_not_found():
+        raise NotFoundError("Agent 'foo' not found")
+
+    @app.get("/raise-domain-504")
+    async def raise_domain_timeout():
+        raise RequestTimeoutError("Request timed out")
+
+    @app.get("/raise-domain-base")
+    async def raise_domain_base():
+        raise DomainException("something broke")
 
     @app.post("/validate-body")
     async def validate_body(body: dict):
@@ -202,6 +215,38 @@ class TestValidationExceptionHandler:
         body = response.json()
         assert body["detail"] is not None
         assert len(body["detail"]) > 0
+
+
+class TestDomainExceptionHandler:
+    def test_not_found_error_returns_404(self, client: TestClient):
+        response = client.get("/raise-domain-404")
+        assert response.status_code == 404
+
+    def test_not_found_error_body(self, client: TestClient):
+        body = client.get("/raise-domain-404").json()
+        assert body["error"] == "Not Found"
+        assert body["detail"] == "Agent 'foo' not found"
+        assert body["status_code"] == 404
+
+    def test_timeout_error_returns_504(self, client: TestClient):
+        response = client.get("/raise-domain-504")
+        assert response.status_code == 504
+
+    def test_timeout_error_body(self, client: TestClient):
+        body = client.get("/raise-domain-504").json()
+        assert body["error"] == "Request Timed Out"
+        assert body["detail"] == "Request timed out"
+        assert body["status_code"] == 504
+
+    def test_base_domain_exception_returns_500(self, client: TestClient):
+        response = client.get("/raise-domain-base")
+        assert response.status_code == 500
+
+    def test_base_domain_exception_body(self, client: TestClient):
+        body = client.get("/raise-domain-base").json()
+        assert body["error"] == "Internal Error"
+        assert body["detail"] == "something broke"
+        assert body["status_code"] == 500
 
 
 class TestAddExceptionHandlers:
