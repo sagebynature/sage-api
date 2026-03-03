@@ -30,6 +30,13 @@ def build_session_data(
     )
 
 
+def _make_lock_mock(acquired: bool = True) -> MagicMock:
+    lock = MagicMock()
+    lock.acquire = AsyncMock(return_value=acquired)
+    lock.release = AsyncMock()
+    return lock
+
+
 def build_manager() -> tuple[SessionManager, MagicMock, MagicMock, MagicMock]:
     registry = MagicMock(spec=AgentRegistry)
     store = MagicMock(spec=RedisSessionStore)
@@ -55,6 +62,8 @@ def build_manager() -> tuple[SessionManager, MagicMock, MagicMock, MagicMock]:
     template.model = "azure_ai/test-model"
     registry.get_template.return_value = template
     registry.create_instance.return_value = agent
+
+    store.session_lock = MagicMock(return_value=_make_lock_mock(acquired=True))
 
     manager = SessionManager(registry=registry, store=store, request_timeout=1)
     return manager, registry, store, agent
@@ -127,16 +136,10 @@ async def test_send_message_concurrent_raises_409() -> None:
     manager, _registry, store, _agent = build_manager()
     session_data = build_session_data(session_id="session-1")
     store.get = AsyncMock(return_value=session_data)
+    store.session_lock = MagicMock(return_value=_make_lock_mock(acquired=False))
 
-    lock = asyncio.Lock()
-    await lock.acquire()
-    manager._locks["session-1"] = lock
-
-    try:
-        with pytest.raises(HTTPException, match="Concurrent request") as exc:
-            await manager.send_message("session-1", "hello")
-    finally:
-        lock.release()
+    with pytest.raises(HTTPException, match="Concurrent request") as exc:
+        await manager.send_message("session-1", "hello")
 
     assert exc.value.status_code == 409
 
@@ -178,14 +181,12 @@ async def test_delete_session_calls_agent_close() -> None:
     manager, _registry, store, agent = build_manager()
     store.delete = AsyncMock(return_value=True)
     manager._instances["session-1"] = agent
-    manager._locks["session-1"] = asyncio.Lock()
 
     deleted = await manager.delete_session("session-1")
 
     assert deleted is True
     agent.close.assert_awaited_once()
     assert "session-1" not in manager._instances
-    assert "session-1" not in manager._locks
 
 
 async def test_send_message_timeout_raises_504() -> None:
