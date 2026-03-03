@@ -1,0 +1,31 @@
+# Coding Agent — Local Configuration
+#
+# Override priority: config.toml [defaults] < [agents.*] < AGENTS.md frontmatter
+
+skills_dir = "skills"
+primary = "simple-assistant"
+
+[env]
+AZURE_AI_API_KEY = "${AZURE_AI_API_KEY}"
+AZURE_AI_API_BASE = "${AZURE_AI_API_BASE}"
+
+[defaults]
+model = "azure_ai/gpt-4o"
+max_turns = 20
+max_depth = 3
+
+[defaults.model_params]
+temperature = 0.0
+max_tokens = 8192
+
+[defaults.permission]
+read = "allow"
+web = "allow"
+shell = "deny"
+edit = "deny"
+
+[defaults.context]
+compaction_threshold = 0.75
+reserve_tokens = 4096
+prune_tool_outputs = true
+tool_output_max_chars = 5000
