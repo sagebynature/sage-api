@@ -44,3 +44,4 @@ Thumbs.db
 *.whl
 *.tar.gz
 *.db
+*.rdb
