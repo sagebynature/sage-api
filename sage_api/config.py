@@ -51,6 +51,10 @@ class Settings(BaseSettings):
         ge=1,
         le=65535,
     )
+    metrics_enabled: bool = Field(
+        default=True,
+        description="Enable Prometheus /metrics endpoint",
+    )
 
 
 @lru_cache(maxsize=1)
