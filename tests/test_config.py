@@ -64,13 +64,11 @@ class TestSettingsRequiredFields:
 
     def test_api_key_required(self, monkeypatch, clear_settings_cache):
         """Test that SAGE_API_API_KEY is required and raises ValidationError when missing."""
-        # Ensure SAGE_API_API_KEY is not set
         monkeypatch.delenv("SAGE_API_API_KEY", raising=False)
 
         with pytest.raises(ValidationError) as exc_info:
-            Settings.model_validate({})
+            Settings(_env_file=None)
 
-        # Verify the error is about the api_key field
         errors = exc_info.value.errors()
         assert any(error["loc"] == ("api_key",) for error in errors)
 
