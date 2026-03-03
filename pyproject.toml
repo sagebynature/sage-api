@@ -13,7 +13,7 @@ requires-python = ">=3.10"
 readme = "README.md"
 license = { file = "LICENSE" }
 dependencies = [
-    "sage-agent>=1.4.0",
+    "sage-agent>=1.5.0",
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "redis[hiredis]>=5.0",

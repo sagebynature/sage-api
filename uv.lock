@@ -2836,7 +2836,7 @@ wheels = [
 
 [[package]]
 name = "sage-agent"
-version = "1.4.0"
+version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2854,9 +2854,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/1a/0f68f51be256c9784ba11ca4ecd2081dd560bd15d7475304fb8cf9dc7ab6/sage_agent-1.4.0.tar.gz", hash = "sha256:2d261716cf1969853cbc8e7056852ffc2381bedb856b2ef85e3c2ad78769818b", size = 109734, upload-time = "2026-03-03T00:42:42.77Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/2d/a72763cdc02f68095fd7703b015bc3e32531a7e8d6d991ed27d460c53e61/sage_agent-1.5.0.tar.gz", hash = "sha256:f3755454fdeaee2d8cec0f3f51857619eaa4b5cc18b8e9ef59e6dd0bd5682851", size = 124878, upload-time = "2026-03-03T22:35:23.505Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/0b/25bfc4e5ede80aad1e9e131d65a4285af9f0f16f98051480f46d7591179a/sage_agent-1.4.0-py3-none-any.whl", hash = "sha256:36938cd2a3900875c8ce999879d7a7ed0d4f4be5d62a14f58120684feff1e19d", size = 140166, upload-time = "2026-03-03T00:42:41.029Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/69/4b4740c5827d43c9400a1c958176dca4cebc03a206913d50489f978af1bf/sage_agent-1.5.0-py3-none-any.whl", hash = "sha256:bbacb0f1349e6d132b97fd44e079d887e478e2ac00072464fb6178871d7915d4", size = 159589, upload-time = "2026-03-03T22:35:22.107Z" },
 ]
 
 [[package]]
@@ -2900,7 +2900,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0" },
-    { name = "sage-agent", specifier = ">=1.4.0" },
+    { name = "sage-agent", specifier = ">=1.5.0" },
     { name = "sse-starlette", specifier = ">=1.8.0" },
     { name = "structlog", specifier = ">=24.1.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
