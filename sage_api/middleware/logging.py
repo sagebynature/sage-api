@@ -33,11 +33,12 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         Returns:
             The HTTP response from the application
         """
-        request_id = str(uuid.uuid4())
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         start_time = time.monotonic()
 
         response = await call_next(request)
 
+        response.headers["X-Request-ID"] = request_id
         duration_ms = round((time.monotonic() - start_time) * 1000, 2)
         logger.info(
             "request",

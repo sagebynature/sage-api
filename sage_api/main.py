@@ -74,7 +74,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # --- Shutdown ---
     await session_manager.close_all()
     await hot_reloader.stop()
-    await redis_client.aclose()
     await session_store.close()
     logger.info("sage-api stopped")
 

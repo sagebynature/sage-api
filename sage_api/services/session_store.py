@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -58,13 +57,19 @@ class RedisSessionStore:
         await self._redis.expire(self._key(session_id), self._session_ttl)
 
     async def save_history(self, session_id: str, messages: list[Message]) -> None:
-        session_data = await self.get(session_id)
-        if session_data is None:
+        key = self._key(session_id)
+        raw = await self._redis.get(key)
+        if raw is None:
             raise ValueError(f"Session '{session_id}' not found")
 
-        session_data.conversation_history = json.loads(json.dumps([message.model_dump() for message in messages]))
+        session_data = SessionData.model_validate_json(raw)
+        session_data.conversation_history = [message.model_dump() for message in messages]
         session_data.last_active_at = datetime.now(timezone.utc)
-        await self.update(session_id, session_data)
+
+        pipe = self._redis.pipeline()
+        pipe.set(key, session_data.model_dump_json())
+        pipe.expire(key, self._session_ttl)
+        await pipe.execute()
 
     async def load_history(self, session_id: str) -> list[Message]:
         session_data = await self.get(session_id)

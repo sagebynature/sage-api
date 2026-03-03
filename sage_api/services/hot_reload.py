@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from sage_api.services.agent_registry import AgentRegistry
 
-logger = logging.getLogger(__name__)
+from sage_api.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _get_awatch() -> Callable[..., Any]:
@@ -90,15 +91,15 @@ class AgentHotReloader:
         logger.debug("AgentHotReloader: entering awatch loop on %s", watch_path)
 
         async for changes in awatch(watch_path):
-            md_changes = [(change_type, path) for change_type, path in changes if Path(path).suffix == ".md"]
+            md_changes = [(change_type, path) for change_type, path in changes if Path(path).suffix in {".md", ".toml"}]
             if not md_changes:
                 continue
 
             logger.info(
-                "AgentHotReloader: detected %d .md change(s), reloading registry",
+                "AgentHotReloader: detected %d config change(s), reloading registry",
                 len(md_changes),
             )
             try:
-                registry.reload()
+                await asyncio.to_thread(registry.reload)
             except Exception:  # noqa: BLE001
                 logger.exception("AgentHotReloader: registry.reload() raised an exception")

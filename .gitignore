@@ -45,3 +45,6 @@ Thumbs.db
 *.tar.gz
 *.db
 *.rdb
+
+# Opencode
+.sisyphus/

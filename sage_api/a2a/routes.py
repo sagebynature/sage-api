@@ -5,11 +5,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
+from sage_api.logging import get_logger
 from sage_api.middleware.auth import verify_api_key
 from sage_api.services.session_manager import SessionManager
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="",
@@ -67,7 +70,11 @@ async def _resolve_session_id(
     if session_id is not None:
         return session_id
 
-    agent_name = getattr(request.app.state, "default_agent_name", "assistant")
+    registry = request.app.state.registry
+    agents = registry.list_agents()
+    if not agents:
+        raise HTTPException(status_code=503, detail="No agents registered")
+    agent_name = agents[0].name
     session_info = await session_manager.create_session(agent_name=agent_name)
     return session_info.session_id
 
@@ -120,7 +127,10 @@ async def handle_a2a_request(
         session_id = await _resolve_session_id(request, session_manager, params.sessionId)
     except HTTPException as exc:
         return _jsonrpc_error(body.id, exc.status_code, str(exc.detail))
+    except ValidationError:
+        return _jsonrpc_error(body.id, -32602, "Invalid params")
     except Exception:
+        logger.exception("a2a_param_parsing_failed", method=body.method)
         return _jsonrpc_error(body.id, -32602, "Invalid params")
 
     if body.method == "message/send":

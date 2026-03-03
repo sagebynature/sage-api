@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 
@@ -9,9 +8,10 @@ from sage.config import AgentConfig, load_config
 from sage.main_config import MainConfig, load_main_config, resolve_and_apply_env
 from sage.skills.loader import load_skills_from_directory, resolve_skills_dir
 
+from sage_api.logging import get_logger
 from sage_api.models.schemas import AgentDetail, AgentSummary, SkillInfo, SubagentDetail
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class _AgentInstance:

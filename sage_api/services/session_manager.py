@@ -55,6 +55,9 @@ class SessionManager:
             agent = self._get_or_recover_instance(session_id, latest_session_data)
             agent._conversation_history = latest_session_data.to_messages()
 
+            # Refresh TTL before potentially long LLM call to prevent mid-request expiry
+            await self._store.touch(session_id)
+
             _t0 = time.monotonic()
             try:
                 response = await asyncio.wait_for(agent.run(message), timeout=self._request_timeout)
@@ -84,6 +87,9 @@ class SessionManager:
 
             agent = self._get_or_recover_instance(session_id, latest_session_data)
             agent._conversation_history = latest_session_data.to_messages()
+
+            # Refresh TTL before potentially long LLM call to prevent mid-request expiry
+            await self._store.touch(session_id)
 
             _t0 = time.monotonic()
             try:

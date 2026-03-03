@@ -8,6 +8,7 @@ import redis.asyncio
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
+from sage_api.logging import get_logger
 from sage_api.services.agent_registry import AgentRegistry
 
 router = APIRouter(
@@ -15,6 +16,8 @@ router = APIRouter(
     tags=["health"],
     # NO auth dependency - health endpoints are exempt
 )
+
+logger = get_logger(__name__)
 
 
 @router.get("/live", response_model=dict[str, str])
@@ -41,8 +44,9 @@ async def readiness(request: Request) -> JSONResponse:
     # Check Redis connectivity
     try:
         await redis_client.ping()
-    except Exception as exc:
-        errors.append(str(exc))
+    except Exception:
+        logger.exception("redis_health_check_failed")
+        errors.append("Redis unavailable")
 
     # Check registry has agents
     agents = registry.list_agents()

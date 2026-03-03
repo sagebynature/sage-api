@@ -46,6 +46,13 @@ def build_app(mock_manager: SessionManager) -> FastAPI:
     app = FastAPI()
     app.state.session_manager = mock_manager
     app.state.default_agent_name = "assistant"
+
+    mock_agent_info = MagicMock()
+    mock_agent_info.name = "assistant"
+    mock_registry = MagicMock()
+    mock_registry.list_agents.return_value = [mock_agent_info]
+    app.state.registry = mock_registry
+
     app.include_router(router)
     return app
 
@@ -134,6 +141,7 @@ async def test_message_stream_returns_message_and_done_events(app):
     assert b'"kind": "artifact-update"' in data
     assert b'"state": "working"' in data
     assert b'"state": "completed"' in data
+
 
 def test_unknown_method_returns_jsonrpc_32601(client):
     body = make_jsonrpc_request(

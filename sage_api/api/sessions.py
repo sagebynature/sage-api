@@ -46,23 +46,9 @@ async def get_session(
     """Get session info by session_id."""
     session = await session_manager.get_session(session_id)
     if session is None:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "Not Found",
-                "detail": f"Session '{session_id}' not found",
-                "status_code": 404,
-            },
-        )
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     if session.agent_name != name:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "Not Found",
-                "detail": f"Session '{session_id}' not found",
-                "status_code": 404,
-            },
-        )
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return session
 
 
@@ -78,31 +64,10 @@ async def delete_session(
     """Delete a session by session_id."""
     existing = await session_manager.get_session(session_id)
     if existing is None:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "Not Found",
-                "detail": f"Session '{session_id}' not found",
-                "status_code": 404,
-            },
-        )
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     if existing.agent_name != name:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "Not Found",
-                "detail": f"Session '{session_id}' not found",
-                "status_code": 404,
-            },
-        )
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     deleted = await session_manager.delete_session(session_id)
     if not deleted:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "Not Found",
-                "detail": f"Session '{session_id}' not found",
-                "status_code": 404,
-            },
-        )
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return Response(status_code=204)

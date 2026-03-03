@@ -43,18 +43,23 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+        volumeMounts:
+        - name: agents
+          mountPath: /app/agents
+          readOnly: true
         envFrom:
         - configMapRef:
             name: sage-api-config
         env:
+        - name: PORT
+          value: "8000"
         - name: SAGE_API_API_KEY
           valueFrom:
             secretKeyRef:
               name: sage-api-secret
               key: api-key
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: sage-api-secret
-              key: redis-password
-              optional: true
+      volumes:
+      - name: agents
+        configMap:
+          name: sage-api-agents
+          optional: true
