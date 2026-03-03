@@ -1,0 +1,30 @@
+services:
+  api:
+    build: .
+    ports:
+      - "${PORT:-8080}:${PORT:-8080}"
+    volumes:
+      - ./agents:/app/agents
+    env_file:
+      - .env
+    environment:
+      SAGE_API_REDIS_URL: redis://redis:6379/0
+      SAGE_API_AGENTS_DIR: /app/agents
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis_data:

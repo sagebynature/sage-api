@@ -1,55 +1,24 @@
-# Use Python 3.12 slim base image
-FROM python:3.12-slim
+FROM astral/uv:python3.11-bookworm-slim AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Install uv for dependency management
-RUN pip install --no-cache-dir uv
+COPY pyproject.toml uv.lock ./
 
-# Copy dependency files
-COPY sage-api/pyproject.toml ./
-COPY sage-api/uv.lock* ./
+RUN uv sync --frozen --no-install-project --no-dev
 
-# Copy application code
-COPY sage-api/sage_api/ sage_api/
-COPY sage-api/agents/ agents/
+FROM python:3.11-slim-bookworm AS runtime
 
-# Install core dependencies that don't require private index
-RUN pip install --no-cache-dir \
-    fastapi \
-    "uvicorn[standard]" \
-    redis \
-    sse-starlette \
-    pydantic \
-    pydantic-settings \
-    watchfiles \
-    structlog \
-    httpx \
-    aiofiles \
-    aiosqlite \
-    python-dotenv \
-    markdownify
+WORKDIR /app
+COPY --from=builder /app/.venv /app/.venv
+COPY sage_api/ sage_api/
 
-# Note: sage package installation is skipped due to private dependencies
-# In production, either:
-# 1. Provide Azure DevOps credentials during build
-# 2. Use a multi-stage build with pre-installed dependencies
-# 3. Use a private base image with sage pre-installed
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONPATH="/app"
+ENV PORT=8080
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
-# Switch to non-root user
+RUN adduser --disabled-password --gecos "" appuser
 USER appuser
 
-# Expose port
-EXPOSE 8000
+EXPOSE ${PORT}
 
-# Health check using Python
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live', timeout=5)" || exit 1
-
-# Start uvicorn server
-CMD ["uvicorn", "sage_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "exec uvicorn sage_api.main:app --host 0.0.0.0 --port $PORT"]
