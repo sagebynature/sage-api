@@ -6,7 +6,7 @@ import fakeredis.aioredis
 import pytest
 
 from sage.models import Message, ToolCall
-from sage_api.models.schemas import SessionData
+from sage_api.models.schemas import SessionData, UsageInfo
 from sage_api.services.session_store import RedisSessionStore
 
 
@@ -108,3 +108,22 @@ async def test_exists_and_touch_refreshes_ttl(store: RedisSessionStore) -> None:
     refreshed_ttl = await store._redis.ttl(store._key("session-7"))
     assert refreshed_ttl > 1
     assert refreshed_ttl <= store._session_ttl
+
+
+async def test_save_history_with_usage_persists_usage(store: RedisSessionStore) -> None:
+    await store.create("session-usage", "assistant", {})
+    messages = [Message(role="user", content="Hi")]
+    usage = UsageInfo(prompt_tokens=100, completion_tokens=50, total_tokens=150, cost=0.002)
+    await store.save_history("session-usage", messages, usage=usage)
+    loaded = await store.get("session-usage")
+    assert loaded is not None
+    assert loaded.cumulative_usage.prompt_tokens == 100
+    assert loaded.cumulative_usage.completion_tokens == 50
+    assert loaded.cumulative_usage.cost == 0.002
+
+
+async def test_create_with_model_name(store: RedisSessionStore) -> None:
+    await store.create("session-model", "assistant", {}, model_name="azure_ai/test-model")
+    loaded = await store.get("session-model")
+    assert loaded is not None
+    assert loaded.model_name == "azure_ai/test-model"

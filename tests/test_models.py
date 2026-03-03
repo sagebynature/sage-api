@@ -1,7 +1,6 @@
 """Tests for Pydantic models and schemas."""
 
 from datetime import datetime, timezone
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -21,7 +20,42 @@ from sage_api.models.schemas import (
     SkillInfo,
     SSEEvent,
     SubagentDetail,
+    UsageInfo,
 )
+
+
+class TestUsageInfo:
+    def test_usage_info_defaults(self):
+        usage = UsageInfo()
+        assert usage.prompt_tokens == 0
+        assert usage.completion_tokens == 0
+        assert usage.total_tokens == 0
+        assert usage.cache_read_tokens == 0
+        assert usage.cache_creation_tokens == 0
+        assert usage.reasoning_tokens == 0
+        assert usage.cost == 0.0
+
+    def test_usage_info_with_values(self):
+        usage = UsageInfo(
+            prompt_tokens=100,
+            completion_tokens=50,
+            total_tokens=150,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+            reasoning_tokens=20,
+            cost=0.002,
+        )
+        assert usage.prompt_tokens == 100
+        assert usage.completion_tokens == 50
+        assert usage.total_tokens == 150
+        assert usage.cost == 0.002
+
+    def test_usage_info_json_roundtrip(self):
+        usage = UsageInfo(prompt_tokens=42, cost=0.001)
+        json_str = usage.model_dump_json()
+        usage2 = UsageInfo.model_validate_json(json_str)
+        assert usage2.prompt_tokens == 42
+        assert usage2.cost == 0.001
 
 
 class TestSendMessageRequest:
@@ -29,14 +63,15 @@ class TestSendMessageRequest:
 
     def test_basic_message_request(self):
         """Test creating a basic message request."""
-        req = SendMessageRequest(message="Hello, world!")
+        req = SendMessageRequest(session_id="s1", message="Hello, world!")
         assert req.message == "Hello, world!"
+        assert req.session_id == "s1"
         assert req.metadata is None
 
     def test_message_request_with_metadata(self):
         """Test message request with metadata."""
         meta = {"user_id": "123", "source": "web"}
-        req = SendMessageRequest(message="Hi", metadata=meta)
+        req = SendMessageRequest(session_id="s1", message="Hi", metadata=meta)
         assert req.message == "Hi"
         assert req.metadata == meta
 
@@ -45,12 +80,18 @@ class TestSendMessageRequest:
         with pytest.raises(ValidationError):
             SendMessageRequest()
 
+    def test_message_request_missing_session_id(self):
+        """Test that session_id field is required."""
+        with pytest.raises(ValidationError):
+            SendMessageRequest(message="hi")
+
     def test_message_request_json_serialization(self):
         """Test JSON serialization."""
-        req = SendMessageRequest(message="test", metadata={"key": "value"})
+        req = SendMessageRequest(session_id="s1", message="test", metadata={"key": "value"})
         json_str = req.model_dump_json()
         req2 = SendMessageRequest.model_validate_json(json_str)
         assert req2.message == "test"
+        assert req2.session_id == "s1"
         assert req2.metadata == {"key": "value"}
 
 
@@ -94,6 +135,40 @@ class TestSessionInfo:
         assert info.created_at == now
         assert info.last_active_at == now
         assert info.message_count == 5
+
+    def test_session_info_enriched_fields(self):
+        """Test creating session info with enriched fields."""
+        now = datetime.now(timezone.utc)
+        info = SessionInfo(
+            session_id="sess-enriched",
+            agent_name="assistant",
+            created_at=now,
+            last_active_at=now,
+            message_count=3,
+            duration_seconds=300.0,
+            usage=UsageInfo(prompt_tokens=100),
+            model="test-model",
+            context_window_utilization=0.5,
+        )
+        assert info.duration_seconds == 300.0
+        assert info.usage.prompt_tokens == 100
+        assert info.model == "test-model"
+        assert info.context_window_utilization == 0.5
+
+    def test_session_info_defaults(self):
+        """Test that enriched fields have correct defaults."""
+        now = datetime.now(timezone.utc)
+        info = SessionInfo(
+            session_id="sess-defaults",
+            agent_name="assistant",
+            created_at=now,
+            last_active_at=now,
+            message_count=0,
+        )
+        assert info.duration_seconds == 0.0
+        assert info.usage.prompt_tokens == 0
+        assert info.model is None
+        assert info.context_window_utilization is None
 
     def test_session_info_json_serialization(self):
         """Test JSON serialization with datetimes."""
@@ -453,6 +528,39 @@ class TestSessionData:
         )
         assert session.conversation_history[0]["content"] is None
         assert session.conversation_history[0]["tool_calls"] is not None
+
+    def test_session_data_backward_compat_without_new_fields(self):
+        now = datetime.now(timezone.utc)
+        old_dict = {
+            "session_id": "sess-old",
+            "agent_name": "assistant",
+            "conversation_history": [],
+            "created_at": now.isoformat(),
+            "last_active_at": now.isoformat(),
+            "metadata": {},
+        }
+        import json
+
+        session = SessionData.model_validate_json(json.dumps(old_dict))
+        assert session.session_id == "sess-old"
+        assert session.cumulative_usage.prompt_tokens == 0
+        assert session.model_name == ""
+
+    def test_session_data_with_cumulative_usage_roundtrip(self):
+        now = datetime.now(timezone.utc)
+        session = SessionData(
+            session_id="sess-usage",
+            agent_name="assistant",
+            conversation_history=[],
+            created_at=now,
+            last_active_at=now,
+            metadata={},
+            cumulative_usage=UsageInfo(prompt_tokens=50, cost=0.001),
+        )
+        json_str = session.model_dump_json()
+        session2 = SessionData.model_validate_json(json_str)
+        assert session2.cumulative_usage.prompt_tokens == 50
+        assert session2.cumulative_usage.cost == 0.001
 
 
 class TestSkillInfo:
