@@ -1,6 +1,9 @@
 #!/usr/bin/make -f
 
-.PHONY: check-env sync install update lint format type-check test clean start docker-build docker-up docker-down docker-logs
+IMAGE   ?= sagebynature/sage-api
+VERSION ?=
+
+.PHONY: check-env sync install update lint format type-check test clean start docker-build docker-up docker-down docker-logs docker-push release
 
 PACKAGE_NAME = sage_api
 SRC_DIR = $(PACKAGE_NAME)
@@ -48,6 +51,18 @@ docker-down:
 
 docker-logs:
 	docker compose logs -f api
+
+docker-push:
+	@test -n "$(VERSION)" || (echo "VERSION is required. Usage: make docker-push VERSION=v0.2.0" && exit 1)
+	docker build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest .
+	docker push $(IMAGE):$(VERSION)
+	docker push $(IMAGE):latest
+
+release:
+	@test -n "$(VERSION)" || (echo "VERSION is required. Usage: make release VERSION=v0.2.0" && exit 1)
+	@echo "NOTE: Prefer merging the Release Please PR to trigger an automated release."
+	git tag $(VERSION)
+	git push origin $(VERSION)
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache
