@@ -22,39 +22,37 @@ def get_session_manager(request: Request) -> SessionManager:
 
 
 @router.post(
-    "/agents/{name}/sessions/{session_id}/messages",
+    "/agents/{name}/messages",
     response_model=MessageResponse,
 )
 async def send_message(
     name: str,
-    session_id: str,
     body: SendMessageRequest,
     session_manager: SessionManager = Depends(get_session_manager),
 ) -> MessageResponse:
     """Send a message to an agent session and get a response."""
-    session = await session_manager.get_session(session_id)
+    session = await session_manager.get_session(body.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     if session.agent_name != name:
         raise HTTPException(status_code=404, detail="Session not found")
     # HTTPException (409, 504) from session_manager bubbles up as-is
     return await session_manager.send_message(
-        session_id=session_id,
+        session_id=body.session_id,
         message=body.message,
     )
 
 
 @router.post(
-    "/agents/{name}/sessions/{session_id}/messages/stream",
+    "/agents/{name}/messages/stream",
 )
 async def stream_messages(
     name: str,
-    session_id: str,
     body: SendMessageRequest,
     session_manager: SessionManager = Depends(get_session_manager),
 ) -> EventSourceResponse:
     """Stream agent response via Server-Sent Events."""
-    session = await session_manager.get_session(session_id)
+    session = await session_manager.get_session(body.session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     if session.agent_name != name:
@@ -62,7 +60,7 @@ async def stream_messages(
 
     async def event_generator():
         async for chunk in session_manager.stream_message(
-            session_id=session_id,
+            session_id=body.session_id,
             message=body.message,
         ):
             yield {"event": "message", "data": chunk}
