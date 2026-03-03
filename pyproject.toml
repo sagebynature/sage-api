@@ -11,6 +11,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 readme = "README.md"
+license = { file = "LICENSE" }
 dependencies = [
     "sage-agent>=1.4.0",
     "fastapi>=0.104.0",
