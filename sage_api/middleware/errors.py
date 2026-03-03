@@ -29,7 +29,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     """
     if isinstance(exc.detail, dict):
         error_message = exc.detail.get("error", str(exc.detail))
-        detail_text = None
+        detail_text = exc.detail.get("detail")
     else:
         error_message = str(exc.detail) if exc.detail is not None else "HTTP Error"
         detail_text = exc.detail if isinstance(exc.detail, str) else None

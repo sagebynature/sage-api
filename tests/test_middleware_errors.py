@@ -27,6 +27,24 @@ def make_app() -> tuple[FastAPI, TestClient]:
             },
         )
 
+    @app.get("/raise-404-dict")
+    async def raise_not_found_dict():
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "Not Found",
+                "detail": "Agent 'foo' not found",
+                "status_code": 404,
+            },
+        )
+
+    @app.get("/raise-400-dict-no-detail")
+    async def raise_bad_request_dict():
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "Bad Request"},
+        )
+
     @app.get("/raise-500")
     async def raise_unhandled():
         raise RuntimeError("boom")
@@ -95,6 +113,28 @@ class TestHttpExceptionHandler:
         response = client.get("/raise-404")
         body = response.json()
         assert body["detail"] == "Not found"
+
+    def test_401_dict_detail_preserves_detail_field(self, client: TestClient):
+        """HTTP 401 with dict detail preserves the 'detail' value from the dict."""
+        response = client.get("/raise-401-dict")
+        body = response.json()
+        assert body["detail"] == "Invalid or missing API key"
+
+    def test_404_dict_detail_preserves_detail_field(self, client: TestClient):
+        """HTTP 404 with ErrorResponse-shaped dict preserves the 'detail' value."""
+        response = client.get("/raise-404-dict")
+        body = response.json()
+        assert body["error"] == "Not Found"
+        assert body["detail"] == "Agent 'foo' not found"
+        assert body["status_code"] == 404
+
+    def test_dict_without_detail_key_returns_null_detail(self, client: TestClient):
+        """HTTP exception with dict lacking 'detail' key returns null detail."""
+        response = client.get("/raise-400-dict-no-detail")
+        body = response.json()
+        assert body["error"] == "Bad Request"
+        assert body["detail"] is None
+        assert body["status_code"] == 400
 
 
 class TestUnhandledExceptionHandler:

@@ -21,13 +21,14 @@
 
 ### HIGH
 
-#### F-004 [Bugs] Error handler drops `detail` when `HTTPException.detail` is a dict
+#### ~~F-004 [Bugs] Error handler drops `detail` when `HTTPException.detail` is a dict~~ ✅ ADDRESSED
 
 - Severity: HIGH
 - Location: `sage_api/middleware/errors.py:30-44`, `sage_api/middleware/auth.py:35-54`, `sage_api/api/agents.py:40-49`
 - Problem: For dict-shaped details, the handler sets `detail` to `None` and only keeps `error`.
 - Impact: Auth failures and structured 404s lose their actionable details; clients get degraded/inconsistent error bodies.
 - Recommendation: If `exc.detail` already matches `{error, detail, status_code}`, return it as-is. Otherwise, map dicts to both fields.
+- Resolution: Changed `detail_text = None` to `detail_text = exc.detail.get("detail")` in `errors.py:32`. All dict-shaped callers already use `ErrorResponse` shape with a `"detail"` key, so the value is now preserved. Added 3 regression tests covering dict-with-detail, dict-without-detail, and 401 auth dict cases.
 
 #### F-005 [Bugs] `delete_session()` can fail to delete if `agent.close()` raises
 
