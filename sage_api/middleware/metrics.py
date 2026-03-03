@@ -38,7 +38,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             status_code = response.status_code
         except Exception:
+            duration = time.monotonic() - start
             telemetry.dec_http_active(method, endpoint)
+            telemetry.record_http_request(method, endpoint, 500, duration)
             raise
         duration = time.monotonic() - start
         telemetry.dec_http_active(method, endpoint)

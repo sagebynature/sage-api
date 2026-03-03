@@ -66,6 +66,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.registry = registry
     app.state.session_manager = session_manager
     app.state.hot_reloader = hot_reloader
+    app.state.rate_limit_config = {
+        "rpm": settings.rate_limit_rpm,
+        "max_body_bytes": settings.max_body_bytes,
+        "max_concurrent_streams": settings.max_concurrent_streams,
+    }
 
     logger.info("sage-api started")
 
@@ -95,6 +100,25 @@ def create_app(lifespan_override: Callable[[FastAPI], AbstractAsyncContextManage
     # Add middleware (last added = first executed)
     app.add_middleware(RequestLoggingMiddleware)
 
+    # CORS — only when origins are configured
+    settings = get_settings()
+    if settings.cors_origins:
+        from starlette.middleware.cors import CORSMiddleware
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            allow_credentials=True,
+        )
+
+    # Rate limiting — only when at least one limit is configured
+    if settings.rate_limit_rpm or settings.max_body_bytes or settings.max_concurrent_streams:
+        from sage_api.middleware.rate_limit import RateLimitMiddleware
+
+        app.add_middleware(RateLimitMiddleware)
+
     # Register exception handlers
     add_exception_handlers(app)
 
@@ -107,7 +131,6 @@ def create_app(lifespan_override: Callable[[FastAPI], AbstractAsyncContextManage
     app.include_router(a2a_router)  # POST /a2a
 
     # Mount Prometheus metrics endpoint — unauthenticated, auth-exempt via EXEMPT_PATHS
-    settings = get_settings()
     if settings.metrics_enabled:
         from prometheus_client import make_asgi_app as _make_prometheus_app_local
 

@@ -26,7 +26,7 @@ def make_jsonrpc_request(method: str, params: dict, request_id: str | int = "req
 
 
 def make_message_params(parts: list[dict], session_id: str | None = "session-abc") -> dict:
-    payload = {
+    payload: dict[str, object] = {
         "message": {
             "messageId": "message-1",
             "role": "user",
@@ -209,3 +209,24 @@ async def test_message_stream_has_event_stream_content_type(app):
             content_type = response.headers.get("content-type", "")
 
     assert "text/event-stream" in content_type
+
+
+@pytest.mark.asyncio
+async def test_message_stream_sends_failed_state_on_error(app):
+    async def chunks_then_not_found():
+        yield "hello"
+        raise NotFoundError("gone")
+
+    app.state.session_manager.stream_message = MagicMock(return_value=chunks_then_not_found())
+
+    body = make_jsonrpc_request(
+        "message/stream",
+        make_message_params([{"kind": "text", "text": "hello"}], session_id="session-abc"),
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        async with ac.stream("POST", "/a2a", json=body, headers=AUTH_HEADERS) as response:
+            data = await response.aread()
+
+    assert response.status_code == 200
+    assert b"event: error" in data
+    assert b'"state": "failed"' in data

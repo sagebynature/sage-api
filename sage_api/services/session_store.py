@@ -47,8 +47,7 @@ class RedisSessionStore:
 
     async def update(self, session_id: str, session_data: SessionData) -> None:
         key = self._key(session_id)
-        await self._redis.set(key, session_data.model_dump_json())
-        await self._redis.expire(key, self._session_ttl)
+        await self._redis.set(key, session_data.model_dump_json(), ex=self._session_ttl)
 
     async def delete(self, session_id: str) -> bool:
         deleted_count = await self._redis.delete(self._key(session_id))

@@ -36,7 +36,18 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
         start_time = time.monotonic()
 
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = round((time.monotonic() - start_time) * 1000, 2)
+            logger.exception(
+                "request_error",
+                method=request.method,
+                path=request.url.path,
+                duration_ms=duration_ms,
+                request_id=request_id,
+            )
+            raise
 
         response.headers["X-Request-ID"] = request_id
         duration_ms = round((time.monotonic() - start_time) * 1000, 2)

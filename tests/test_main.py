@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from sage_api.config import get_settings
+from sage_api.exceptions import NotFoundError
 from sage_api.main import create_app
 from sage_api.models.schemas import AgentSummary
 
@@ -61,7 +62,13 @@ def _make_mock_hot_reloader() -> AsyncMock:
 
 @pytest.fixture()
 def mock_registry() -> MagicMock:
-    return _make_mock_registry(agents=[AgentSummary(name="test-agent", description="A test agent", model="gpt-4o-mini", skills_count=0, subagents_count=0)])
+    return _make_mock_registry(
+        agents=[
+            AgentSummary(
+                name="test-agent", description="A test agent", model="gpt-4o-mini", skills_count=0, subagents_count=0
+            )
+        ]
+    )
 
 
 @pytest.fixture()
@@ -272,3 +279,29 @@ async def test_docs_endpoint_accessible(client: AsyncClient) -> None:
     """OpenAPI docs are served without authentication."""
     response = await client.get("/docs")
     assert response.status_code == 200
+
+
+async def test_error_handler_returns_error_response_shape(
+    client: AsyncClient,
+    mock_session_manager: MagicMock,
+) -> None:
+    mock_session_manager.create_session = AsyncMock(side_effect=NotFoundError("Agent 'nonexistent' not found"))
+
+    response = await client.post(
+        "/v1/agents/nonexistent/sessions",
+        headers=AUTH_HEADERS,
+        json={},
+    )
+
+    assert response.status_code == 404
+    body = response.json()
+    assert body["error"] == "Not Found"
+    assert body["detail"] == "Agent 'nonexistent' not found"
+    assert body["status_code"] == 404
+
+
+async def test_cors_middleware_not_added_when_origins_empty(client: AsyncClient) -> None:
+    response = await client.get("/health/live", headers={"Origin": "http://evil.com"})
+
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers

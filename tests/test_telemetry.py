@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -133,6 +133,33 @@ def test_metrics_middleware_skip_paths_exclude_metrics() -> None:
 
 
 @pytest.mark.asyncio
+async def test_metrics_middleware_records_500_on_exception() -> None:
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from sage_api.middleware.metrics import MetricsMiddleware
+
+    app = FastAPI()
+    app.add_middleware(MetricsMiddleware)
+
+    @app.get("/boom")
+    async def boom() -> dict[str, str]:
+        raise RuntimeError("boom")
+
+    with patch("sage_api.middleware.metrics.telemetry") as mock_telemetry:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            with pytest.raises(RuntimeError):
+                await client.get("/boom")
+
+    mock_telemetry.record_http_request.assert_called_once()
+    method, endpoint, status_code, duration = mock_telemetry.record_http_request.call_args.args
+    assert method == "GET"
+    assert endpoint == "/boom"
+    assert status_code == 500
+    assert duration > 0
+
+
+@pytest.mark.asyncio
 async def test_metrics_endpoint_returns_200() -> None:
     """GET /metrics must return 200 with Prometheus text content-type."""
     import fakeredis.aioredis
@@ -247,6 +274,10 @@ async def test_metrics_not_mounted_when_disabled() -> None:
     mock_settings = MagicMock(spec=Settings)
     mock_settings.metrics_enabled = False
     mock_settings.log_level = "INFO"
+    mock_settings.cors_origins = []
+    mock_settings.rate_limit_rpm = 0
+    mock_settings.max_body_bytes = 0
+    mock_settings.max_concurrent_streams = 0
 
     with patch("sage_api.main.get_settings", return_value=mock_settings):
         app = create_app(lifespan_override=_lifespan)
@@ -298,5 +329,5 @@ def test_session_gauge_increments_and_decrements() -> None:
             for m in sm.metrics:
                 if m.name == "sage_sessions_active":
                     for dp in m.data.data_points:
-                        active = dp.value
+                        active = float(getattr(dp, "value", active))
     assert active == 1.0  # 2 created, 1 deleted

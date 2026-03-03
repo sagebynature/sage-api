@@ -83,8 +83,8 @@ class AgentHotReloader:
     async def _watch(self, agents_dir: str, registry: AgentRegistry) -> None:
         """Internal coroutine that runs the watchfiles event loop.
 
-        Filters events to ``.md`` files only and calls ``registry.reload()``
-        synchronously (the method is not a coroutine).
+        Filters events to ``.md`` and ``.toml`` files only and calls
+        ``registry.reload()`` via ``asyncio.to_thread`` (blocking I/O off the event loop).
         """
         awatch = self._awatch_factory()
         watch_path = Path(agents_dir)

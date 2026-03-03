@@ -203,3 +203,30 @@ class TestRequestLoggingMiddleware:
                 duration_ms = call_kwargs.get("duration_ms")
                 assert duration_ms is not None
                 assert duration_ms >= 0
+
+    @pytest.mark.asyncio
+    async def test_middleware_logs_exception_with_logger_exception(self):
+        app = FastAPI()
+
+        @app.get("/boom")
+        async def boom_route():
+            raise RuntimeError("boom")
+
+        app.add_middleware(RequestLoggingMiddleware)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            with patch("sage_api.middleware.logging.logger.info") as mock_info:
+                with patch("sage_api.middleware.logging.logger.exception") as mock_exc:
+                    with pytest.raises(RuntimeError):
+                        await client.get("/boom")
+
+                    mock_exc.assert_called_once()
+                    assert mock_info.call_count == 0
+
+                    call_args = mock_exc.call_args
+                    assert call_args.args[0] == "request_error"
+                    assert call_args.kwargs["method"] == "GET"
+                    assert call_args.kwargs["path"] == "/boom"
+                    assert isinstance(call_args.kwargs["duration_ms"], (int, float))
+                    assert call_args.kwargs["duration_ms"] >= 0
+                    assert call_args.kwargs["request_id"] is not None

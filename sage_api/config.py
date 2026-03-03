@@ -55,6 +55,25 @@ class Settings(BaseSettings):
         default=True,
         description="Enable Prometheus /metrics endpoint",
     )
+    cors_origins: list[str] = Field(
+        default_factory=list,
+        description="Allowed CORS origins (empty = CORS disabled)",
+    )
+    rate_limit_rpm: int = Field(
+        default=0,
+        description="Max requests per minute per API key (0 = disabled)",
+        ge=0,
+    )
+    max_body_bytes: int = Field(
+        default=0,
+        description="Max request body size in bytes (0 = unlimited)",
+        ge=0,
+    )
+    max_concurrent_streams: int = Field(
+        default=0,
+        description="Max concurrent SSE streams per API key (0 = unlimited)",
+        ge=0,
+    )
 
 
 @lru_cache(maxsize=1)

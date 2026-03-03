@@ -59,68 +59,84 @@
 - **Resolution**: Fixed as a side effect of F-001. The distributed Redis lock uses `acquire(blocking=False)` which is atomic — returns `True` (acquired) or `False` (already held) in a single operation. Eliminates the `locked()` then `acquire()` race condition entirely.
 - **Branch**: `fix/f001-distributed-session-lock`
 
-#### F-009 [Data Integrity] Redis `update()` uses `SET` then `EXPIRE` as separate commands
+#### ~~F-009 [Data Integrity] Redis `update()` uses `SET` then `EXPIRE` as separate commands~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
 - Location: `sage_api/services/session_store.py:44-47`
 - Problem: TTL is applied in a second command.
 - Impact: If the process crashes between calls, keys can become immortal; extra Redis round trips.
 - Recommendation: Use `SET ... EX` (single command) or wrap in a transaction.
+- **Resolution**: Replaced separate `set()` + `expire()` with atomic `set(key, value, ex=self._session_ttl)` in `session_store.py:48-50`. Single round-trip, crash-safe.
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
-#### F-010 [Observability] Request logging does not log exceptions
+#### ~~F-010 [Observability] Request logging does not log exceptions~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
 - Location: `sage_api/middleware/logging.py:36-51`
 - Problem: Middleware logs only after `call_next()` returns; exceptions bypass logging entirely.
 - Impact: Failed requests disappear from access logs; harder incident debugging.
 - Recommendation: Wrap `call_next()` in try/except/finally to log both success and failure, and re-raise.
+- **Resolution**: Wrapped `call_next()` in try/except; on exception, logs `request_error` via `logger.exception()` with method, path, and exception info, then re-raises. Normal path unchanged. Added 1 regression test.
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
-#### F-011 [Protocol] A2A stream emits `completed` even after error
+#### ~~F-011 [Protocol] A2A stream emits `completed` even after error~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
 - Location: `sage_api/a2a/routes.py:98-110`
 - Problem: `_stream_events()` yields an `error` event but then always yields a `done` event with state `completed`.
 - Impact: Clients can treat failed runs as successful completion.
 - Recommendation: Emit a terminal `failed` state and stop streaming after error.
+- **Resolution**: Added `errored` flag in `_stream_events()`; set `True` in except block. Final yield uses `"state": "failed"` when `errored` is `True`. Added 1 regression test verifying `NotFoundError` produces `"state": "failed"` in the terminal event.
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
-#### F-012 [Missing Capability] No rate limiting / quotas / request size limits
+#### ~~F-012 [Missing Capability] No rate limiting / quotas / request size limits~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
 - Location: `sage_api/main.py:81-117` (no such middleware), `sage_api/api/messages.py:24-71`
 - Problem: Nothing prevents abuse (SSE connection exhaustion, message spam, LLM cost blowups).
 - Impact: DoS risk and runaway cost.
 - Recommendation: Add per-API-key rate limits and max body size; cap concurrent streams per key.
+- **Resolution**: Created `sage_api/middleware/rate_limit.py` (108 lines) with `RateLimitMiddleware` implementing: per-API-key RPM sliding window via Redis, request body size limit (413), concurrent stream cap with Redis counter and auto-decrement. Added config fields `rate_limit_rpm`, `max_body_bytes`, `max_concurrent_streams` (all default 0 = disabled). Wired into `create_app()` and `lifespan()`. Health/docs/metrics paths exempt. 14 regression tests in `tests/test_rate_limit.py`.
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
-#### F-013 [Missing Capability] No CORS configuration
+#### ~~F-013 [Missing Capability] No CORS configuration~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
 - Location: `sage_api/main.py:81-117`
 - Problem: No CORSMiddleware.
 - Impact: Browser-based clients will fail unless proxied; or (if later enabled broadly) could be misconfigured.
 - Recommendation: Add explicit CORS allowlist only if you intend browser usage.
+- **Resolution**: Added `cors_origins: list[str]` config field (default empty = disabled). When non-empty, `CORSMiddleware` is registered in `create_app()` with the configured origins. 6 config field tests in `tests/test_config.py`.
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
-#### F-014 [Metrics] Exceptions are not recorded in HTTP request metrics
+#### ~~F-014 [Metrics] Exceptions are not recorded in HTTP request metrics~~ ✅ ADDRESSED
 
 - Severity: MEDIUM
 - Location: `sage_api/middleware/metrics.py:35-45`
 - Problem: On exception, active is decremented but no request_total/duration is recorded.
 - Impact: Under-counted error traffic; missing latency for failures.
 - Recommendation: Record metrics in a finally block with a synthetic status_code or error label.
+- **Resolution**: In the except block of `MetricsMiddleware.dispatch()`, now records duration and calls `telemetry.record_http_request(method, endpoint, 500, duration)` before re-raising. 1 regression test verifying `record_http_request` is called with `status_code=500` on exception.
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
 ### LOW
 
-#### F-016 [Testing Gap] Lifespan and error-handler behavior are under-tested
+#### ~~F-016 [Testing Gap] Lifespan and error-handler behavior are under-tested~~ ✅ ADDRESSED
 
 - Severity: LOW
 - Location: `tests/test_main.py:90-104`, `tests/test_auth.py:22-70`
 - Problem: Tests note ASGITransport does not run lifespan; auth tests assert default FastAPI error shapes (not the app's custom exception handlers).
 - Impact: Startup/shutdown regressions and error-shape regressions slip through.
 - Recommendation: Add an integration test that actually runs lifespan and asserts the ErrorResponse shape produced by `add_exception_handlers()`.
+- **Resolution**: Added 2 tests in `tests/test_main.py`: `test_error_handler_returns_error_response_shape` (verifies DomainException 404 returns `{error, detail, status_code}` shape) and `test_cors_middleware_not_added_when_origins_empty` (verifies no CORS headers when `cors_origins` is empty).
+- **Branch**: `fix/f009-f017-medium-low-fixes`
 
-#### F-017 [Code Smell] Hot reload docstring/comment is stale
+#### ~~F-017 [Code Smell] Hot reload docstring/comment is stale~~ ✅ ADDRESSED
 
 - Severity: LOW
 - Location: `sage_api/services/hot_reload.py:86-88`
 - Problem: Comment says reload is called synchronously, but code uses `asyncio.to_thread`.
 - Impact: Confusing maintenance.
 - Recommendation: Update docstring/comments to match behavior.
+- **Resolution**: Updated docstring to reflect `asyncio.to_thread` and `.toml` filtering.
+- **Branch**: `fix/f009-f017-medium-low-fixes`

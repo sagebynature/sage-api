@@ -85,6 +85,7 @@ async def _stream_events(stream, first_chunk: str | None, request_id: str | int,
         "event": "message",
         "data": json.dumps({"kind": "status-update", "status": {"state": "working"}}),
     }
+    errored = False
     try:
         if first_chunk is not None:
             yield {
@@ -97,6 +98,7 @@ async def _stream_events(stream, first_chunk: str | None, request_id: str | int,
                 "data": json.dumps({"kind": "artifact-update", "artifact": {"parts": [{"text": chunk}]}}),
             }
     except (HTTPException, DomainException) as exc:
+        errored = True
         yield {
             "event": "error",
             "data": json.dumps(
@@ -107,7 +109,8 @@ async def _stream_events(stream, first_chunk: str | None, request_id: str | int,
                 }
             ),
         }
-    yield {"event": "done", "data": json.dumps({"kind": "status-update", "status": {"state": "completed"}})}
+    final_state = "failed" if errored else "completed"
+    yield {"event": "done", "data": json.dumps({"kind": "status-update", "status": {"state": final_state}})}
 
 
 @router.post("/a2a", response_model=None)
