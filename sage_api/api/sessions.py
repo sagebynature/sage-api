@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
 from sage_api.middleware.auth import verify_api_key
 from sage_api.models.schemas import CreateSessionRequest, SessionInfo
@@ -35,12 +35,12 @@ async def create_session(
 
 
 @router.get(
-    "/agents/{name}/sessions/{session_id}",
+    "/agents/{name}/sessions",
     response_model=SessionInfo,
 )
 async def get_session(
     name: str,
-    session_id: str,
+    session_id: str = Query(..., description="Session ID to retrieve"),
     session_manager: SessionManager = Depends(get_session_manager),
 ) -> SessionInfo:
     """Get session info by session_id."""
@@ -53,12 +53,12 @@ async def get_session(
 
 
 @router.delete(
-    "/agents/{name}/sessions/{session_id}",
+    "/agents/{name}/sessions",
     status_code=204,
 )
 async def delete_session(
     name: str,
-    session_id: str,
+    session_id: str = Query(..., description="Session ID to delete"),
     session_manager: SessionManager = Depends(get_session_manager),
 ) -> Response:
     """Delete a session by session_id."""
