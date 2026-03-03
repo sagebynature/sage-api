@@ -6,7 +6,7 @@ from typing import Any
 import redis.asyncio as aioredis
 
 from sage.models import Message
-from sage_api.models.schemas import SessionData
+from sage_api.models.schemas import SessionData, UsageInfo
 
 
 class RedisSessionStore:
@@ -22,7 +22,9 @@ class RedisSessionStore:
     def _key(self, session_id: str) -> str:
         return f"session:{session_id}"
 
-    async def create(self, session_id: str, agent_name: str, metadata: dict[str, Any]) -> SessionData:
+    async def create(
+        self, session_id: str, agent_name: str, metadata: dict[str, Any], model_name: str = ""
+    ) -> SessionData:
         now = datetime.now(timezone.utc)
         session_data = SessionData(
             session_id=session_id,
@@ -31,6 +33,7 @@ class RedisSessionStore:
             created_at=now,
             last_active_at=now,
             metadata=metadata,
+            model_name=model_name,
         )
         await self.update(session_id, session_data)
         return session_data
@@ -56,7 +59,13 @@ class RedisSessionStore:
     async def touch(self, session_id: str) -> None:
         await self._redis.expire(self._key(session_id), self._session_ttl)
 
-    async def save_history(self, session_id: str, messages: list[Message]) -> None:
+    async def save_history(
+        self,
+        session_id: str,
+        messages: list[Message],
+        usage: UsageInfo | None = None,
+        model_name: str | None = None,
+    ) -> None:
         key = self._key(session_id)
         raw = await self._redis.get(key)
         if raw is None:
@@ -65,6 +74,10 @@ class RedisSessionStore:
         session_data = SessionData.model_validate_json(raw)
         session_data.conversation_history = [message.model_dump() for message in messages]
         session_data.last_active_at = datetime.now(timezone.utc)
+        if usage is not None:
+            session_data.cumulative_usage = usage
+        if model_name is not None:
+            session_data.model_name = model_name
 
         pipe = self._redis.pipeline()
         pipe.set(key, session_data.model_dump_json())
