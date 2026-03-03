@@ -111,3 +111,19 @@ def test_record_message_is_noop_when_disabled() -> None:
 
     reset_telemetry()
     record_message("agent-a", "sync", 0.5)
+
+
+def test_metrics_middleware_can_be_imported() -> None:
+    """MetricsMiddleware must be importable without errors."""
+    from sage_api.middleware.metrics import MetricsMiddleware
+
+    assert MetricsMiddleware is not None
+
+
+def test_metrics_middleware_skip_paths_exclude_metrics() -> None:
+    """_SKIP_PATHS must include /metrics, /health/live, /health/ready."""
+    from sage_api.middleware.metrics import _SKIP_PATHS
+
+    assert "/metrics" in _SKIP_PATHS
+    assert "/health/live" in _SKIP_PATHS
+    assert "/health/ready" in _SKIP_PATHS
