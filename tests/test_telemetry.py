@@ -216,8 +216,8 @@ async def test_metrics_endpoint_contains_sage_metrics_after_request() -> None:
         response = await client.get("/metrics")
 
     body = response.text
-    # At minimum we should see some sage_ metrics registered
-    assert "sage_" in body or "# HELP" in body
+    # sage_http_requests_total should appear because GET /v1/agents was recorded
+    assert "sage_http_requests_total" in body or "sage_" in body
 
 
 @pytest.mark.asyncio
@@ -260,3 +260,43 @@ async def test_metrics_not_mounted_when_disabled() -> None:
         response = await client.get("/metrics")
 
     assert response.status_code == 404
+
+
+def test_session_gauge_increments_and_decrements() -> None:
+    """sage_sessions_active must go up on create and down on delete."""
+    from opentelemetry.sdk.metrics import MeterProvider
+    from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+    from opentelemetry import metrics
+
+    from sage_api.telemetry import (
+        _init_instruments,
+        record_session_created,
+        record_session_deleted,
+        reset_telemetry,
+    )
+
+    reset_telemetry()
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    metrics.set_meter_provider(provider)
+
+    import sage_api.telemetry as t
+
+    t._meter = provider.get_meter("sage-api")
+    _init_instruments(t._meter)
+
+    record_session_created("agent-x")
+    record_session_created("agent-x")
+    record_session_deleted()
+
+    data = reader.get_metrics_data()
+    assert data is not None
+    active = 0.0
+    for rm in data.resource_metrics:
+        for sm in rm.scope_metrics:
+            for m in sm.metrics:
+                if m.name == "sage_sessions_active":
+                    for dp in m.data.data_points:
+                        active = dp.value
+    assert active == 1.0  # 2 created, 1 deleted

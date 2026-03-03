@@ -75,12 +75,17 @@ def reset_telemetry() -> None:
     _messages_total = None
     _message_duration = None
 
-    # Reset prometheus_client registry to avoid "Duplicated timeseries" errors in tests
+    # Reset global TracerProvider to avoid stale SpanMetricsBridge in tests
+    from opentelemetry.sdk.trace import TracerProvider as _TracerProvider
+
+    trace.set_tracer_provider(_TracerProvider())
+
+    # Clear prometheus_client registry to avoid "Duplicated timeseries" errors in tests
     try:
         from prometheus_client import REGISTRY
 
-        collectors = list(REGISTRY._names_to_collectors.values())
-        for collector in set(collectors):
+        # Use a copy to avoid mutation during iteration
+        for collector in list(REGISTRY._collectors):  # type: ignore[attr-defined]
             try:
                 REGISTRY.unregister(collector)
             except Exception:
@@ -232,7 +237,7 @@ class SpanMetricsBridge(SpanProcessor):
             return
 
         attrs = span.attributes or {}
-        model = str(attrs.get("model", "unknown"))
+        model = str(attrs.get("model") or "unknown")
         status = "error" if span.status.status_code == StatusCode.ERROR else "ok"
 
         raw_prompt = attrs.get("prompt_tokens", 0) or 0

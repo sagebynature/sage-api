@@ -8,7 +8,6 @@ from typing import Any, AsyncGenerator
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI
-from prometheus_client import make_asgi_app as _make_prometheus_app
 
 from sage_api import telemetry
 from sage_api.a2a import a2a_router, agent_card_router
@@ -95,7 +94,6 @@ def create_app(lifespan_override: Callable[[FastAPI], AbstractAsyncContextManage
     )
 
     # Add middleware (last added = first executed)
-    app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     # Register exception handlers
@@ -112,7 +110,10 @@ def create_app(lifespan_override: Callable[[FastAPI], AbstractAsyncContextManage
     # Mount Prometheus metrics endpoint — unauthenticated, auth-exempt via EXEMPT_PATHS
     settings = get_settings()
     if settings.metrics_enabled:
-        app.mount("/metrics", _make_prometheus_app())
+        from prometheus_client import make_asgi_app as _make_prometheus_app_local
+
+        app.add_middleware(MetricsMiddleware)
+        app.mount("/metrics", _make_prometheus_app_local())
 
     return app
 
