@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-.PHONY: check-env sync install update lint format type-check test clean start
+.PHONY: check-env sync install update lint format type-check test clean start docker-build docker-up docker-down docker-logs
 
 PACKAGE_NAME = sage_api
 SRC_DIR = $(PACKAGE_NAME)
@@ -36,6 +36,18 @@ test-only:
 
 start:
 	uv run uvicorn sage_api.main:app --host 0.0.0.0 --port 8000 --reload
+
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f api
 
 clean:
 	rm -rf build/ dist/ *.egg-info src/*.egg-info .pytest_cache .mypy_cache .ruff_cache
