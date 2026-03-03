@@ -75,6 +75,19 @@ def reset_telemetry() -> None:
     _messages_total = None
     _message_duration = None
 
+    # Reset prometheus_client registry to avoid "Duplicated timeseries" errors in tests
+    try:
+        from prometheus_client import REGISTRY
+
+        collectors = list(REGISTRY._names_to_collectors.values())
+        for collector in set(collectors):
+            try:
+                REGISTRY.unregister(collector)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
 
 def get_meter() -> metrics.Meter | None:
     """Return the shared Meter, or ``None`` when telemetry is disabled."""

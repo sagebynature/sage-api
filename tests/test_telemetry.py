@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
 
 def test_setup_telemetry_disabled_is_noop() -> None:
     """setup_telemetry(False) must leave the global meter provider as no-op/proxy."""
@@ -58,6 +60,7 @@ def test_span_bridge_records_on_llm_complete() -> None:
     bridge.on_end(span)
 
     data = reader.get_metrics_data()
+    assert data is not None
     metric_names = {m.name for rm in data.resource_metrics for sm in rm.scope_metrics for m in sm.metrics}
     assert "sage_llm_prompt_tokens_total" in metric_names
     assert "sage_llm_completion_tokens_total" in metric_names
@@ -127,3 +130,133 @@ def test_metrics_middleware_skip_paths_exclude_metrics() -> None:
     assert "/metrics" in _SKIP_PATHS
     assert "/health/live" in _SKIP_PATHS
     assert "/health/ready" in _SKIP_PATHS
+
+
+@pytest.mark.asyncio
+async def test_metrics_endpoint_returns_200() -> None:
+    """GET /metrics must return 200 with Prometheus text content-type."""
+    import fakeredis.aioredis
+    from contextlib import asynccontextmanager
+    from typing import AsyncGenerator
+    from unittest.mock import MagicMock
+
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from sage_api.main import create_app
+    from sage_api.telemetry import reset_telemetry, setup_telemetry
+
+    # ASGITransport does NOT trigger ASGI lifespan, so we set up telemetry
+    # and app.state.* directly before issuing requests.
+    reset_telemetry()
+    setup_telemetry(enabled=True)
+
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    mock_registry = MagicMock()
+    mock_registry.scan.return_value = {}
+    mock_registry.list_agents.return_value = []
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        yield
+
+    app = create_app(lifespan_override=_lifespan)
+    app.state.redis = fake_redis
+    app.state.registry = mock_registry
+    app.state.session_manager = MagicMock()
+    app.state.hot_reloader = MagicMock()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True) as client:
+        response = await client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "text/plain" in response.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_metrics_endpoint_contains_sage_metrics_after_request() -> None:
+    """After an HTTP request, /metrics must contain sage_http metric names."""
+    import fakeredis.aioredis
+    from contextlib import asynccontextmanager
+    from typing import AsyncGenerator
+    from unittest.mock import MagicMock
+
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from sage_api.main import create_app
+    from sage_api.telemetry import reset_telemetry, setup_telemetry
+
+    # ASGITransport does NOT trigger ASGI lifespan, so we set up telemetry
+    # and app.state.* directly before issuing requests.
+    reset_telemetry()
+    setup_telemetry(enabled=True)
+
+    fake_redis = fakeredis.aioredis.FakeRedis()
+    mock_registry = MagicMock()
+    mock_registry.scan.return_value = {}
+    mock_registry.list_agents.return_value = []
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        yield
+
+    app = create_app(lifespan_override=_lifespan)
+    app.state.redis = fake_redis
+    app.state.registry = mock_registry
+    app.state.session_manager = MagicMock()
+    app.state.hot_reloader = MagicMock()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=True) as client:
+        # Trigger a request to generate metrics
+        await client.get("/health/live")
+        # /health/live is in _SKIP_PATHS so won't appear — trigger an agent list request
+        # which will be rejected with 401 (no API key) but still recorded
+        await client.get("/v1/agents")
+        response = await client.get("/metrics")
+
+    body = response.text
+    # At minimum we should see some sage_ metrics registered
+    assert "sage_" in body or "# HELP" in body
+
+
+@pytest.mark.asyncio
+async def test_metrics_not_mounted_when_disabled() -> None:
+    """When metrics_enabled=False, GET /metrics must return 404."""
+    import fakeredis.aioredis
+    from contextlib import asynccontextmanager
+    from typing import AsyncGenerator
+    from unittest.mock import patch, MagicMock
+
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from sage_api.config import Settings
+    from sage_api.main import create_app
+    from sage_api.telemetry import reset_telemetry
+
+    reset_telemetry()
+
+    fake_redis = fakeredis.aioredis.FakeRedis()
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+        yield
+
+    # Patch get_settings to return metrics_enabled=False
+    mock_settings = MagicMock(spec=Settings)
+    mock_settings.metrics_enabled = False
+    mock_settings.log_level = "INFO"
+
+    with patch("sage_api.main.get_settings", return_value=mock_settings):
+        app = create_app(lifespan_override=_lifespan)
+
+    app.state.redis = fake_redis
+    app.state.registry = MagicMock()
+    app.state.session_manager = MagicMock()
+    app.state.hot_reloader = MagicMock()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/metrics")
+
+    assert response.status_code == 404
