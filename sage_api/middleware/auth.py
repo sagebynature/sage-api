@@ -3,7 +3,6 @@
 import secrets
 from fastapi import Header, HTTPException, Request
 from sage_api.config import get_settings
-from sage_api.models.schemas import ErrorResponse
 
 # Paths that don't require API key authentication
 EXEMPT_PATHS = {
@@ -12,6 +11,7 @@ EXEMPT_PATHS = {
     "/.well-known/agent-card.json",
     "/docs",
     "/openapi.json",
+    "/metrics",
 }
 
 

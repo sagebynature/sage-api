@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from collections.abc import Callable
+from typing import Any, AsyncGenerator
 
 import redis.asyncio as aioredis
 from fastapi import FastAPI
+from prometheus_client import make_asgi_app as _make_prometheus_app
 
+from sage_api import telemetry
 from sage_api.a2a import a2a_router, agent_card_router
 from sage_api.api.agents import router as agents_router
 from sage_api.api.health import router as health_router
@@ -17,6 +20,7 @@ from sage_api.config import get_settings
 from sage_api.logging import get_logger, setup_logging
 from sage_api.middleware.errors import add_exception_handlers
 from sage_api.middleware.logging import RequestLoggingMiddleware
+from sage_api.middleware.metrics import MetricsMiddleware
 from sage_api.services.agent_registry import AgentRegistry
 from sage_api.services.hot_reload import AgentHotReloader
 from sage_api.services.session_manager import SessionManager
@@ -28,18 +32,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application startup and shutdown lifecycle."""
     settings = get_settings()
 
-    # 1. Configure structured logging first
+    # 1. Initialise metrics (before anything else so all startup events are captured)
+    telemetry.setup_telemetry(enabled=settings.metrics_enabled)
+
+    # 2. Configure structured logging
     setup_logging(settings.log_level)
     logger = get_logger(__name__)
 
-    # 2. Connect to Redis (used by health checks via app.state.redis)
+    # 3. Connect to Redis (used by health checks via app.state.redis)
     redis_client = aioredis.from_url(settings.redis_url, decode_responses=True)
 
-    # 3. Build and populate the agent registry
+    # 4. Build and populate the agent registry
     registry = AgentRegistry(agents_dir=settings.agents_dir)
     registry.scan()
 
-    # 4. Build session store and session manager
+    # 5. Build session store and session manager
     #    RedisSessionStore now receives the shared redis_client.
     session_store = RedisSessionStore(
         redis_client=redis_client,
@@ -51,11 +58,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         request_timeout=settings.request_timeout_seconds,
     )
 
-    # 5. Start hot-reloader
+    # 6. Start hot-reloader
     hot_reloader = AgentHotReloader()
     await hot_reloader.start(agents_dir=settings.agents_dir, registry=registry)
 
-    # 6. Expose services on app state
+    # 7. Expose services on app state
     app.state.redis = redis_client
     app.state.registry = registry
     app.state.session_manager = session_manager
@@ -73,7 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("sage-api stopped")
 
 
-def create_app(lifespan_override=None) -> FastAPI:
+def create_app(lifespan_override: Callable[[FastAPI], AbstractAsyncContextManager[Any]] | None = None) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Returns:
@@ -88,6 +95,7 @@ def create_app(lifespan_override=None) -> FastAPI:
     )
 
     # Add middleware (last added = first executed)
+    app.add_middleware(MetricsMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
 
     # Register exception handlers
@@ -101,6 +109,11 @@ def create_app(lifespan_override=None) -> FastAPI:
     app.include_router(agent_card_router)  # GET /.well-known/agent-card.json
     app.include_router(a2a_router)  # POST /a2a
 
+    # Mount Prometheus metrics endpoint — unauthenticated, auth-exempt via EXEMPT_PATHS
+    settings = get_settings()
+    if settings.metrics_enabled:
+        app.mount("/metrics", _make_prometheus_app())
+
     return app
 
 
@@ -109,5 +122,6 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     settings = get_settings()
     uvicorn.run("sage_api.main:app", host=settings.host, port=settings.port, reload=False)
