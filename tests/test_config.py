@@ -68,7 +68,7 @@ class TestSettingsRequiredFields:
         monkeypatch.delenv("SAGE_API_API_KEY", raising=False)
 
         with pytest.raises(ValidationError) as exc_info:
-            Settings()
+            Settings(_env_file=None)
 
         # Verify the error is about the api_key field
         errors = exc_info.value.errors()
